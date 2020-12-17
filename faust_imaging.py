@@ -26,9 +26,9 @@ from cleanhelper import cleanhelper
 
 # Global paths
 ROOT_DIR = '/lustre/aoc/users/bsvoboda/faust/faust_alma/'
-DAT_DIR = os.path.join(ROOT_DIR, 'data/')
-IMG_DIR = os.path.join(DAT_DIR, 'images/')
-MOM_DIR = os.path.join(DAT_DIR, 'moments/')
+DATA_DIR = os.path.join(ROOT_DIR, 'data/')
+IMAG_DIR = os.path.join(DATA_DIR, 'images/')
+MOMA_DIR = os.path.join(DATA_DIR, 'moments/')
 
 MAD_TO_RMS = 1 / (np.sqrt(2) * sp.special.erfinv(0.5))  # approx. 1.4826
 NITERMAX = int(1e6)
@@ -70,7 +70,7 @@ ALL_FIELD_NAMES = ALL_TARGETS.keys()
 
 
 class DataSet(object):
-    ms_fmt = DAT_DIR + '{0}-Setup{1}/uid___*_target_lines_self_calibrated_continuum_subtracted_aligned.ms'
+    ms_fmt = DATA_DIR + '{0}-Setup{1}/uid___*_target_lines_self_calibrated_continuum_subtracted_aligned.ms'
     oversamp_fact = 4.5  # factor to oversample synthesized beam
     low_freqs = {1: 217, 2: 245, 3: 93}  # GHz
     high_freqs = {1: 235, 2: 262, 3: 108}  # GHz
@@ -163,7 +163,7 @@ class DataSet(object):
         return [eff_width, eff_width]
 
     def check_if_product_dirs_exist(self):
-        field_dir = os.path.join(IMG_DIR, self.field)
+        field_dir = os.path.join(IMAG_DIR, self.field)
         try:
             os.makedirs(field_dir)
         except OSError:
