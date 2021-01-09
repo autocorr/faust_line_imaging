@@ -111,4 +111,14 @@ addition to some stand-alone utility functions for book-keeping purposes.
 Attributes and methods are terms in Python for variables and functions bound to
 classes.
 
+To image all combinations of SPWs and uv-weightings, it is sufficient to run:
+
+```python
+dset = DataSet('CB68', setup=2, kind='joint')
+run_pipeline(dset)
+```
+
+The default weightings to use are 'natural' and briggs robust 0.5 . A list
+of weightings may be passed to the `run_pipeline` call using the `weightings`
+keyword arguement for other combinations.
 

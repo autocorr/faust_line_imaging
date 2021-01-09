@@ -3,9 +3,11 @@
 ============
 Image Target
 ============
-Line imaging for FAUST targets.
+Line imaging for FAUST targets. Please see the README file for further
+documentation.
 
-NOTE: Run with `execfile` in CASA to use this script.
+NOTE: To use this script within an interactive session of CASA (Python v2), run
+with `execfile`.
 
 Author:`Brian Svoboda`
 Year:2020
@@ -25,16 +27,19 @@ from cleanhelper import cleanhelper
 
 
 # Global paths
-ROOT_DIR = '/lustre/aoc/users/bsvoboda/faust/faust_alma/'
-DATA_DIR = os.path.join(ROOT_DIR, 'data/')
-IMAG_DIR = os.path.join(DATA_DIR, 'images/')
-MOMA_DIR = os.path.join(DATA_DIR, 'moments/')
+DATA_DIR = '/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs/'
+PROD_DIR = '/lustre/aoc/users/bsvoboda/faust/faust_alma/data/'
+IMAG_DIR = os.path.join(PROD_DIR, 'images/')
+MOMA_DIR = os.path.join(PROD_DIR, 'moments/')
+PLOT_DIR = os.path.join(PROD_DIR, 'plots/')
 
 MAD_TO_RMS = 1 / (np.sqrt(2) * sp.special.erfinv(0.5))  # approx. 1.4826
-NITERMAX = int(1e6)
+NITERMAX = int(1e7)
 PBLIMIT = 0.07
 # line cut-out window in velocity (full width)
 LINE_VWIN = '20km/s'
+# set of briggs uv-weightings to use by default in pipeline tasks
+WEIGHTINGS = ('natural', 0.5)
 
 
 class Target(object):
@@ -52,19 +57,19 @@ class Target(object):
 
 
 ALL_TARGETS = { t.name: t for t in [
-        Target('L1527',           0.36, 5.9),
-        Target('IRAS_15398-3359', 0.32, 5.3),
-        Target('CB68',            0.36, 5.0),
-        Target('L1551_IRS2',      0.34, 6.5),
-        Target('L483',            0.25, 5.5),
-        Target('Elias29',         0.36, 5.0),
-        Target('VLA1623A',        0.36, 4.0),
-        Target('GSS30',           0.36, 3.5),
-        Target('R_CrA_IRS2',      0.37, 6.2),
-        Target('NGC1333_IRAS4C',  0.21, 7.6),
-        Target('BHB07-11',        0.35, 3.6),
-        Target('IRS63',           0.34, 0.0),
-        Target('NGC1333_IRAS4A',  0.21, 7.0),
+        Target('BHB07-11',          0.35, 3.6),
+        Target('CB68',              0.36, 5.0),
+        Target('Elias29',           0.36, 5.0),
+        Target('GSS30',             0.36, 3.5),
+        Target('IRAS_15398-3359',   0.32, 5.3),
+        Target('IRS63',             0.34, 0.0),
+        Target('L1527',             0.36, 5.9),
+        Target('L1551_IRS5',        0.34, 6.5),
+        Target('L483',              0.25, 5.5),
+        Target('NGC1333_IRAS4A1A2', 0.21, 7.0),
+        Target('NGC1333_IRAS4C',    0.21, 7.6),
+        Target('R_CrA_IRS7B',       0.37, 6.2),
+        Target('VLA1623A',          0.36, 4.0),
 ]}
 ALL_FIELD_NAMES = ALL_TARGETS.keys()
 
@@ -469,6 +474,14 @@ def export_fits(imagename, overwrite=True):
     exportfits(imagename, imagename+'.fits', velocity=True, overwrite=overwrite)
 
 
+def basepath_from_fullpath(path):
+    base, ext = os.path.splitext(path)
+    if ext == '':
+        return base
+    else:
+        return basepath_from_fullpath(base)
+
+
 def if_exists_remove(imagename):
     if os.path.exists(imagename):
         rmtables(imagename)
@@ -504,13 +517,11 @@ def crop_cube_to_common_coverage(imagename):
     """
     Create a channel-selected sub-image to remove channels of an image cube
     where there is not complete overlap in spectral coverage between different
-    execution blocks. Generates a new image with '_crop' pre-pended to the
-    image file extension.
+    execution blocks. Generates a new image appended with '.crop'.
     """
     log_post(':: Cropping cube to common spectral coverage')
-    imagebase, ext = os.path.splitext(imagename)
-    ext = ext.lstrip('.')
-    outfile = '{0}_crop.{1}'.format(imagebase, ext)
+    imagebase = basepath_from_fullpath(imagename)
+    outfile = '{0}.crop'.format(imagename)
     sumwt_filen = '{0}.sumwt.concat'.format(imagebase)
     if not os.path.exists(sumwt_filen):
         concat_parallel_image('{0}.sumwt'.format(imagebase))
@@ -529,6 +540,17 @@ def crop_cube_to_common_coverage(imagename):
             chans='{0}~{1}'.format(ix_lo, ix_hi),
             overwrite=True,
     )
+
+
+def smooth_cube_to_common_beam(imagename):
+    """
+    Use the `imsmooth` task to convert a cube with per-plane beams into one
+    with a single common beam.
+    """
+    log_post(':: Smoothing cube to common beam scale')
+    outfile = imagename + '.common'
+    imsmooth(imagename=imagename, kernel='commonbeam', outfile=outfile,
+            overwrite=True)
 
 
 ###############################################################################
@@ -839,22 +861,66 @@ def image_line_windowed_dirty(dset, spw, weighting):
             fullcube=False, ext='wdirty')
 
 
-def image_all_lines_inspect_dirty(dset):
+def image_all_lines_inspect_dirty(dset, weightings=WEIGHTINGS):
     spws = ALL_SPW_SETS[dset.setup]
     for spw_id, spw in spws.items():
         log_post(':: Cleaning SPW {0}: {1}'.format(spw_id, spw.name))
-        for weighting in ('natural', 0):
+        for weighting in weightings:
             image_line_windowed_dirty(dset, spw, weighting)
 
 
-def clean_all_lines_with_masking(dset, fullcube=False):
+def postproc_image_to_common(imagename):
+    # check if image is a "virtual" image made with tclean in parallel mode.
+    image_chunk_files = glob(imagename+'/*.n*.*')
+    if image_chunk_files:
+        concat_parallel_image(imagename)
+        crop_cube_to_common_coverage(imagename+'.concat')
+        smooth_cube_to_common_beam(imagename+'.concat.crop')
+    else:
+        crop_cube_to_common_coverage(imagename)
+        smooth_cube_to_common_beam(imagename+'.crop')
+
+
+def postproc_all_cleaned_images(dset):
+    all_filen = glob('images/{0}/*.image'.format(dset.field))
+    log_post(':: Post-processing image cubes to common beam')
+    for imagename in all_filen:
+        postproc_image_to_common(imagename)
+
+
+def clean_all_lines_with_masking(dset, fullcube=False, weightings=WEIGHTINGS):
     spws = ALL_SPW_SETS[dset.setup]
     for spw_id, spw in spws.items():
         log_post(':: Cleaning SPW {0}: {1}'.format(spw_id, spw.name))
         kwargs = {'dirty': False, 'fullcube': fullcube, 'mask_method':
                 'auto-multithresh', 'ext': 'am'}
-        for weighting in ('natural', 0):
+        for weighting in weightings:
             image_line_windowed_dirty(dset, spw, weighting)
             clean_line_target(dset, spw, weighting=weighting, **kwargs)
+            imagebase = dset.get_imagename(spw, ext=kwargs['ext'])
+            postproc_image_to_common(imagebase+'.image')
+
+
+def run_pipeline(dset, weightings=WEIGHTINGS):
+    """
+    Run all pipeline tasks.
+
+    Parameters
+    ----------
+    dset : DataSet
+    weightings : iterable, default ('natural', 0.5)
+        List of uv-weightings to use in `tclean`, which may include the string
+        "natural" or a number for the briggs robust parameter.
+    """
+    clean_all_lines_with_masking(dset, fullcube=True, weightings=weightings)
+    # TODO:
+    #   - export fits
+    #   - create diagnostic plots (channel maps and moments)
+    #   - create moment maps
+
+
+if __name__ == '__main__':
+    # TODO qsub submission framework to go here
+    pass
 
 
