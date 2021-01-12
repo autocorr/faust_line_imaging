@@ -33,13 +33,20 @@ IMAG_DIR = os.path.join(PROD_DIR, 'images/')
 MOMA_DIR = os.path.join(PROD_DIR, 'moments/')
 PLOT_DIR = os.path.join(PROD_DIR, 'plots/')
 
+# Median-absolute-deviation conversion factor to Gaussian RMS
 MAD_TO_RMS = 1 / (np.sqrt(2) * sp.special.erfinv(0.5))  # approx. 1.4826
+# Large `niter` value, hopefully not reached in actually executions.
 NITERMAX = int(1e7)
+# Primary beam limit to image down to. When using the mosaic gridder and values
+# are too low then the beam becomes dominated by the 7m data with non-uniformly
+# sized synthesized beam.
 PBLIMIT = 0.07
-# line cut-out window in velocity (full width)
+# Line cut-out window in velocity (full width)
 LINE_VWIN = '20km/s'
-# set of briggs uv-weightings to use by default in pipeline tasks
+# Set of briggs uv-weightings to use by default in pipeline tasks
 WEIGHTINGS = ('natural', 0.5)
+# Default extension name for dirty images
+DIRTY_EXT = 'dirty'
 
 
 class Target(object):
@@ -302,6 +309,9 @@ class Spw(object):
 
 
 def parse_spw_info_from_ms(ms_filen, out_filen=None):
+    # NOTE This function was only needed to write out the values that may now
+    # be found in the `Spw` objects. The resource configuration should be the
+    # same for all targets.
     msmd.open(ms_filen)
     # get source ID number
     field_id = msmd.fieldsforname('CB68')[0]
@@ -474,14 +484,6 @@ def export_fits(imagename, overwrite=True):
     exportfits(imagename, imagename+'.fits', velocity=True, overwrite=overwrite)
 
 
-def basepath_from_fullpath(path):
-    base, ext = os.path.splitext(path)
-    if ext == '':
-        return base
-    else:
-        return basepath_from_fullpath(base)
-
-
 def if_exists_remove(imagename):
     if os.path.exists(imagename):
         rmtables(imagename)
@@ -493,6 +495,22 @@ def delete_workdir(imagename):
         shutil.rmtree(workdir)
 
 
+def replace_existing_file_with_new(old_filen, new_filen):
+    """
+    Replace an existing file with a new or temporary one.
+    `old_filen` will be removed and replaced by `new_filen`.
+    """
+    if not os.path.exists(new_filen):
+        raise IOError('File does not exist: "{0}"'.format(new_filen))
+    rmtables(old_filen)
+    # If a parallel/virtual image, then will not be recognized as a table in
+    # the call to `rmtables`
+    if os.path.exists(old_filen):
+        log_post('-- Hard delete! "{0}"'.format(old_filen))
+        shutil.rmtree(old_filen)
+    os.rename(new_filen, old_filen)
+
+
 def concat_parallel_image(imagename):
     """
     Create a contiguous image cube file from a 'virtual image' generated from a
@@ -500,7 +518,7 @@ def concat_parallel_image(imagename):
     """
     _, ext = os.path.splitext(imagename)
     ext = ext.lstrip('.')
-    outfile = imagename + '.concat'
+    outfile = imagename + '.TEMP'
     if_exists_remove(outfile)
     log_post(':: Concatenating file "{0}"'.format(imagename))
     ia.open(imagename)
@@ -511,33 +529,63 @@ def concat_parallel_image(imagename):
     )
     im_tool.close()
     ia.done()
+    replace_existing_file_with_new(imagename, outfile)
 
 
-def crop_cube_to_common_coverage(imagename):
+def concat_parallel_all_extensions(imagebase):
+    exts = ['image', 'model', 'pb', 'psf', 'residual', 'sumwt', 'weight']
+    for ext in exts:
+        concat_parallel_image('{0}.{1}'.format(imagebase, ext))
+
+
+def calc_common_coverage_range(imagebase):
     """
-    Create a channel-selected sub-image to remove channels of an image cube
-    where there is not complete overlap in spectral coverage between different
-    execution blocks. Generates a new image appended with '.crop'.
+    Calculate the common frequency coverage amongst a set of MSs/EBs. The
+    `.sumwt` image extension is used from an existing "dirty" cube.
+
+    Parameters
+    ----------
+    imagebase : str
+
+    Returns
+    -------
+    start : str
+        The start frequency in the LSRK frame.
+    nchan : int
+        The number of channels from `start` at the native spectral resolution.
     """
-    log_post(':: Cropping cube to common spectral coverage')
-    imagebase = basepath_from_fullpath(imagename)
-    outfile = '{0}.crop'.format(imagename)
-    sumwt_filen = '{0}.sumwt.concat'.format(imagebase)
-    if not os.path.exists(sumwt_filen):
-        concat_parallel_image('{0}.sumwt'.format(imagebase))
+    sumwt_filen = '{0}.sumwt'.format(imagebase)
+    # get sum-of-the-weights values
     ia.open(sumwt_filen)
     sumwt = ia.getchunk().squeeze()
+    csys = ia.coordsys().torecord()
     ia.close()
-    med_sumwt = np.nanmedian(sumwt)
     # determine lowest and highest channels to use
-    good_chans = np.argwhere(sumwt == med_sumwt)
+    med_sumwt = np.nanmedian(sumwt)
+    good_chans = np.argwhere(sumwt > 0.8 * med_sumwt)
     ix_lo = good_chans.min()
     ix_hi = good_chans.max()
-    # create sub-image file over channel range
-    imsubimage(
-            imagename=imagename,
-            outfile=outfile,
-            chans='{0}~{1}'.format(ix_lo, ix_hi),
+    nchan = abs(ix_hi - ix_lo)
+    # convert indices to frequencies
+    spec_sys = csys['spectral2']
+    sunit = spec_sys['unit']
+    crpix = spec_sys['wcs']['crpix']
+    crval = spec_sys['wcs']['crval']
+    cdelt = spec_sys['wcs']['cdelt']
+    faxis = (np.arange(len(sumwt)) + crpix) * cdelt + crval
+    start_val = faxis[ix_lo:ix_hi].min()
+    start = '{0}{1}'.format(start_val, sunit)
+    log_post('-- start frequency: {0}'.format(start))
+    log_post('-- nchan: {0}'.format(nchan))
+    return start, nchan
+
+
+def primary_beam_correct(imagebase):
+    log_post(':: Primary beam correcting image: {0}'.format(imagebase))
+    impbcor(
+            imagename=imagebase+'.image',
+            pbimage=imagebase+'.pb',
+            outfile=imagebase+'.pbcor',
             overwrite=True,
     )
 
@@ -553,12 +601,8 @@ def smooth_cube_to_common_beam(imagename):
             overwrite=True)
 
 
-###############################################################################
-# Line imaging
-###############################################################################
-
 def calc_rms_from_image(dset, spw, weighting, chan_start=None, chan_end=None,
-        rms_ext='wdirty'):
+        rms_ext=DIRTY_EXT):
     """
     Calculate RMS values from the scaled MAD of all channels (unless given a
     range) for imagenames with a name ending in the value given by the argument
@@ -566,7 +610,7 @@ def calc_rms_from_image(dset, spw, weighting, chan_start=None, chan_end=None,
 
     To automatically generate the default configuration, run the function
     `clean_all_lines_inspect_dirty` to generate the image files with the defalt
-    extension `_wdirty`.
+    extension `"_dirty"`.
 
     Parameters
     ----------
@@ -579,7 +623,7 @@ def calc_rms_from_image(dset, spw, weighting, chan_start=None, chan_end=None,
         End channel. If None, use full channel range.
     rms_ext : str
         Default name of the image extension to use for RMS calculations.
-        The conventional extension is 'wdirty' for windowed, dirty cubes.
+        The conventional extension is 'dirty' for windowed, dirty cubes.
 
     Returns
     -------
@@ -601,6 +645,10 @@ def calc_rms_from_image(dset, spw, weighting, chan_start=None, chan_end=None,
     rms = MAD_TO_RMS * np.nanmedian(mad_arr)
     return rms
 
+
+###############################################################################
+# Line imaging
+###############################################################################
 
 def format_rms(rms, sigma=1, unit='Jy'):
     return '{0}{1}'.format(sigma*rms, unit)
@@ -639,7 +687,7 @@ def clean_line_target(dset, spw, dirty=False, fullcube=True,
     assert dset.setup == spw.setup
     # Book-keeping before run
     log_post(':: Running clean ({0}, {1})'.format(dset.setup, spw.spw_id))
-    im_ext = '{0}_{1}'.format(weighting, ext) if ext is not None else str(weighting)
+    im_ext = (weighting, ext) if ext is not None else str(weighting)
     imagename = dset.get_imagename(spw, ext=im_ext)
     niter = 0 if dirty else NITERMAX
     # calculate RMS values from off-line channels of dirty cube. If calculating
@@ -651,8 +699,15 @@ def clean_line_target(dset, spw, dirty=False, fullcube=True,
         log_post('-- RMS {0} Jy'.format(rms))
     threshold = format_rms(rms, sigma=sigma)
     # channel ranges: widowed or full cube
-    start = None if fullcube else dset.target.vstart
-    nchan = -1 if fullcube else spw.win_chan
+    if fullcube and dirty:
+        start = None
+        nchan = -1
+    elif fullcube:
+        dirty_imagebase = dset.get_imagename(spw, ext=(weighting, DIRTY_EXT))
+        start, nchan = calc_common_coverage_range(dirty_imagebase)
+    else:
+        start = dset.target.vstart
+        nchan = spw.win_chan
     spw_ids = dset.spw_ids_from_name(spw)
     # weighting method, must be valid for tclean
     if isinstance(weighting, (int, float)):
@@ -671,13 +726,13 @@ def clean_line_target(dset, spw, dirty=False, fullcube=True,
                     'sidelobethreshold': 1.5,
                     'lownoisethreshold': 1.5,
                     'minbeamfrac': 0.5,
-                    'negativethreshold': 1000.0,
+                    'negativethreshold': 10.0,
                     'pbmask': 0.2,
                     'fastnoise': False,
                     'verbose': True,
                     }
         elif dset.kind == '7m':
-            pass
+            raise NotImplementedError
         else:
             raise ValueError('No parameters available for dset.kind: "{0}"'.format(dset.kind))
     elif mask_method == 'taper':
@@ -722,6 +777,8 @@ def clean_line_target(dset, spw, dirty=False, fullcube=True,
         **mask_kwargs
     )
     delete_workdir(imagename)
+    if MPIEnvironment().is_mpi_enabled:
+        concat_parallel_all_extensions(imagename)
 
 
 def clean_line_target_taper(dset, spw, dirty=False, fullcube=True,
@@ -853,32 +910,22 @@ def clean_line_target_acaonly(dset, spw, dirty=False, fullcube=True, ext=None):
     # Attenuate by 12m PB
 
 
-def image_line_windowed_dirty(dset, spw, weighting):
+def image_line_windowed_dirty(dset, spw, weighting, fullcube=False):
     """
     Routine to generate the windowed dirty cubes used in the RMS calculation.
+    Note that the same value for `fullcube` should be used for both the dirty
+    and the cleaned versions of the cube.
     """
     clean_line_target(dset, spw, weighting=weighting, dirty=True,
-            fullcube=False, ext='wdirty')
+            fullcube=fullcube, ext=DIRTY_EXT)
 
 
-def image_all_lines_inspect_dirty(dset, weightings=WEIGHTINGS):
+def image_all_lines_inspect_dirty(dset, weightings=WEIGHTINGS, fullcube=False):
     spws = ALL_SPW_SETS[dset.setup]
     for spw_id, spw in spws.items():
         log_post(':: Cleaning SPW {0}: {1}'.format(spw_id, spw.name))
         for weighting in weightings:
-            image_line_windowed_dirty(dset, spw, weighting)
-
-
-def postproc_image_to_common(imagename):
-    # check if image is a "virtual" image made with tclean in parallel mode.
-    image_chunk_files = glob(imagename+'/*.n*.*')
-    if image_chunk_files:
-        concat_parallel_image(imagename)
-        crop_cube_to_common_coverage(imagename+'.concat')
-        smooth_cube_to_common_beam(imagename+'.concat.crop')
-    else:
-        crop_cube_to_common_coverage(imagename)
-        smooth_cube_to_common_beam(imagename+'.crop')
+            image_line_windowed_dirty(dset, spw, weighting, fullcube=fullcube)
 
 
 def postproc_all_cleaned_images(dset):
@@ -895,10 +942,13 @@ def clean_all_lines_with_masking(dset, fullcube=False, weightings=WEIGHTINGS):
         kwargs = {'dirty': False, 'fullcube': fullcube, 'mask_method':
                 'auto-multithresh', 'ext': 'am'}
         for weighting in weightings:
-            image_line_windowed_dirty(dset, spw, weighting)
+            image_line_windowed_dirty(dset, spw, weighting, fullcube=fullcube)
             clean_line_target(dset, spw, weighting=weighting, **kwargs)
-            imagebase = dset.get_imagename(spw, ext=kwargs['ext'])
-            postproc_image_to_common(imagebase+'.image')
+            ext = (weighting, kwargs['ext'])
+            imagebase = dset.get_imagename(spw, ext=ext)
+            primary_beam_correct(imagebase)
+            smooth_cube_to_common_beam(imagebase+'.image')
+            smooth_cube_to_common_beam(imagebase+'.pbcor')
 
 
 def run_pipeline(dset, weightings=WEIGHTINGS):
