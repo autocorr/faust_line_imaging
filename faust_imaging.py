@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 """
-============
-Image Target
-============
-Line imaging for FAUST targets. Please see the README file for further
-documentation.
+===================
+ALMA FAUST Pipeline
+===================
+Line imaging pipeline for the ALMA FAUST Large Program. Please see the README
+file for further documentation.
 
 NOTE: To use this script within an interactive session of CASA (Python v2), run
 with `execfile`.
 
 Author:`Brian Svoboda`
+Contributors:`Claire Chandler`
+License:MIT
 Year:2020
 """
 from __future__ import (print_function, division)
@@ -41,21 +43,24 @@ NITERMAX = int(1e7)
 # by 7m data outside of a pblimit=0.07 and will have a non-uniformly sized
 # synthesized beam.
 PBLIMIT = 0.2
+# Sampling factor to determine cell size relative to target resolution (~0.3as,
+# see values `ALL_TARGETS`). A relatively large value of 10 pix per synthesized
+# HPBW is used for consistency with the continuum images.
+OVERSAMPLE_FACT = 10
 # Line cut-out window in velocity (full width)
 LINE_VWIN = '20km/s'
 # Set of briggs uv-weightings to use by default in pipeline tasks
-WEIGHTINGS = ('natural', 0.5)
+WEIGHTINGS = (0.5,)
 # Default extension name for dirty images
 DIRTY_EXT = 'dirty'
 # Default extension name for unmasked clean model
 NOMSK_EXT = 'nomask'
 # perchanelweightdensity parameter in tclean, changing to False slightly
-# improves at the resolution at the expense of sensitivity and uniform RMS.
+# improves the resolution at the expense of sensitivity and uniform RMS.
 PERCHANWT = False
-# Default 12m+7m configuration options for auto-multithresh masking method. See
-# guide for discussion for of automasking parameters:
+# See guide for discussion for of automasking parameters:
 #   https://casaguides.nrao.edu/index.php/Automasking_Guide
-MASK_KWARGS = {
+AUTOM_KWARGS = {
         'usemask': 'auto-multithresh',
         'noisethreshold': 5.0,
         'sidelobethreshold': 2.0,
@@ -104,8 +109,6 @@ ALL_FIELD_NAMES = ALL_TARGETS.keys()
 
 class DataSet(object):
     ms_fmt = DATA_DIR + '{0}-Setup{1}/uid___*_target_lines_self_calibrated_continuum_subtracted_aligned.ms'
-    oversamp_fact = 10  # factor to oversample synthesized beam
-    scales = [0, 15, 45]  # point, 1.5, 4.5 beam hpbw's (10 pix)
     low_freqs = {1: 217, 2: 245, 3: 93}  # GHz
     high_freqs = {1: 235, 2: 262, 3: 108}  # GHz
 
@@ -151,7 +154,7 @@ class DataSet(object):
 
     @property
     def cell_12m(self):
-        cell = self.target.res / self.oversamp_fact
+        cell = self.target.res / OVERSAMPLE_FACT
         return '{0:.4f}arcsec'.format(cell)
 
     @property
@@ -160,7 +163,7 @@ class DataSet(object):
         freq = qa.quantity(hi_nu, 'GHz')
         diam = '50m'  # max-baseline for ACA
         angle = self.calc_res(freq, diam)
-        cell = angle['value'] / self.oversamp_fact
+        cell = angle['value'] / OVERSAMPLE_FACT
         return '{0:.4f}arcsec'.format(cell)
 
     @property
@@ -212,57 +215,6 @@ class DataSet(object):
         angle = qa.convert(qa.mul(qa.div(wavel, diam), '1rad'), 'arcsec')
         assert qa.isangle(angle)
         return angle
-
-    def spw_ids_from_name(self, spw):
-        assert self.setup == spw.setup
-        ot_name = spw.ot_name
-        spw_ids_for_vis = []
-        for filen in self.vis:
-            msmd.open(filen)
-            # SPW data descriptor IDs just for science observations
-            sci_dds = msmd.spwsforintent('OBSERVE_TARGET#ON_SOURCE')
-            # list of SPW names from the science SPW DD IDs
-            spw_names = msmd.namesforspws(sci_dds)
-            msmd.close()
-            # select IDs that have corresponding matching names
-            matches = [
-                    dd for dd, name in zip(sci_dds, spw_names)
-                    if name.endswith(ot_name)
-            ]
-            if len(matches) == 0:
-                raise ValueError(
-                        'OT_NAME "{0}" not found in MS "{1}"'.format(ot_name, filen))
-            elif len(matches) >= 2:
-                raise ValueError(
-                        'Multiple matches found, is MS "{0}" concatenated?'.format(filen))
-            else:
-                spw_ids_for_vis.extend(matches)
-            # raise value error if not found in MS
-        return [str(n) for n in spw_ids_for_vis]
-
-    def get_imagename(self, spw, ext=None):
-        """
-        Get the relative path name for an image based on spectral window and
-        extension.
-
-        Parameters
-        ----------
-        spw : Spw
-        ext : (str, Iterable, object)
-            If `ext` is None, then compose path of setup, spw, array.
-            If `ext` is an iterable, append each by underscores.
-            If other object, must have a `__repr__` method for representation string.
-        """
-        assert self.setup == spw.setup
-        stem = 'images/{0}/s{1}_spw{2}_{3}'.format(
-                self.field, self.setup, spw.spw_id, self.kind)
-        if ext is None:
-            return stem
-        elif isinstance(ext, Iterable) and not isinstance(ext, str):
-            ext_items = '_'.join([str(i) for i in ext])
-            return '{0}_{1}'.format(stem, ext_items)
-        else:
-            return '{0}_{1}'.format(stem, ext)
 
 
 def ms_contains_diameter(ms_filen, diameter=None, epsilon=0.5):
@@ -441,7 +393,11 @@ SPW_S3 = spw_list_to_dict([
     Spw(3, 'H13CCCN', 'H13CCCN_J_12_11(ID=455557)', '1.05799113e+11Hz', 37, 'BB_4#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
 ])
 
-ALL_SPW_SETS = {1: SPW_S1, 2: SPW_S2, 3: SPW_S3}
+SPWS_BY_SETUP = {1: SPW_S1, 2: SPW_S2, 3: SPW_S3}
+ALL_SPWS = {}
+ALL_SPWS.update(SPW_S1)
+ALL_SPWS.update(SPW_S2)
+ALL_SPWS.update(SPW_S3)
 
 
 ###############################################################################
@@ -519,9 +475,10 @@ def delete_all_extensions(imagename, keep_exts=None):
             pass
 
 
-def export_fits(imagename, overwrite=True):
+def export_fits(imagename, velocity=False, overwrite=True):
     log_post(':: Exporting fits')
-    exportfits(imagename, imagename+'.fits', velocity=True, overwrite=overwrite)
+    exportfits(imagename, imagename+'.fits', dropstokes=True,
+            velocity=velocity, overwrite=overwrite)
 
 
 def if_exists_remove(imagename):
@@ -643,86 +600,81 @@ def smooth_cube_to_common_beam(imagename):
             overwrite=True)
 
 
-def calc_rms_from_image(dset, spw, weighting, chan_start=None, chan_end=None,
-        rms_ext=None):
+def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     """
     Calculate RMS values from the scaled MAD of all channels (unless given a
-    range) for imagenames with a name ending in the value given by the argument
-    `rms_ext`.
-
-    To automatically generate the default configuration, run the function
-    `clean_all_lines_inspect_dirty` to generate the image files with the default
-    extension set by `DIRTY_EXT`.
+    range) for the given full imagename.
 
     Parameters
     ----------
-    dset : DataSet
-    spw : Spw
-    weighting : (str, number)
+    imagename : str
+        CASA Image name, e.g., "244.936GHz_CS_joint_0.5_dirty.image"
     chan_start : (int, None)
         Start channel. If None, use full channel range.
     chan_end : (int, None)
         End channel. If None, use full channel range.
-    rms_ext : str
-        Default name of the image extension to use for RMS calculations.
 
     Returns
     -------
     rms : number
     """
-    rms_ext = DIRTY_EXT if rms_ext is None else rms_ext
     if chan_start is None or chan_end is None:
         chans = None
     else:
         assert chan_start < chan_end
         chans = '{0}~{1}'.format(chan_start, chan_end)
-    imagename = dset.get_imagename(spw, ext=(weighting, rms_ext))
-    filen = '{0}.image'.format(imagename)
     # check if directory exists
-    if not os.path.exists(filen):
-        raise IOError('File or directory not found: "{0}"'.format(filen))
+    if not os.path.exists(imagename):
+        raise IOError('File or directory not found: "{0}"'.format(imagename))
     # run imstat over the cube and extract the calculated RMS
-    stats = imstat(imagename=filen, axes=[0, 1], chans=chans)
+    stats = imstat(imagename=imagename, axes=[0, 1], chans=chans)
     mad_arr = stats['medabsdevmed']
     rms = MAD_TO_RMS * np.nanmedian(mad_arr)
     return rms
 
 
-def get_cube_start_nchan(dset, spw, weighting, fullcube, dirty):
+def make_threshold_based_mask(imagename, sigma=5.0, kernel_width=1):
     """
-    Determine the starting value and the number of channels to use in `tclean`
-    based on the parameters `fullcube` and `dirty`. If `fullcube` is False
-    then create a windowed cube around the rest frequency.
+    Threshold an existing image to create a mask.
 
     Parameters
     ----------
-    dset : DataSet
-    spw : Spw
-    weighting : (number, str)
-    fullcube : bool
-    dirty : bool
-
-    Returns
-    -------
-    start : (number, None)
-    nchan : int
+    imagename : str
+    kernel_width : number
+    sigma : number
     """
-    if fullcube and dirty:
-        # unrestricted full coverage across all EBs
-        start = None
-        nchan = -1
-    elif fullcube:
-        # restrict coverage to common coverage cross EBs
-        dirty_imagebase = dset.get_imagename(spw, ext=(weighting, DIRTY_EXT))
-        start, nchan = calc_common_coverage_range(dirty_imagebase)
-    else:
-        # restrict coverage to range around source velocity
-        start = dset.target.vstart
-        nchan = spw.win_chan
-    return start, nchan
+    log_post(':: Creating threshold based mask')
+    rms = calc_rms_from_image(imagename+'.image')
+    thresh = sigma * rms
+    # threshold the partially cleaned image at native resolution
+    immath(imagename=imagename+'.image',
+            mode='evalexpr', outfile=imagename+'.unsmoothed.mask',
+            expr="iif(IM0>{0},1,0)".format(thresh))
+    # smooth the image with a Gaussian kernel
+    imsmooth(imagename=imagename+'.image', kernel='gauss',
+            major='{0}arcsec'.format(kernel_width),
+            minor='{0}arcsec'.format(kernel_width), pa='0deg',
+            targetres=True, outfile=imagename+'_smoothed.image')
+    # PB mask is deleted after smoothing, so copy it back in from the PB
+    makemask(mode='copy', inpimage=imagename+'.pb',
+            inpmask=imagename+'.pb:mask0',
+            output=imagename+'_smoothed.image:mask0', overwrite=True)
+    # recompute the RMS noise for the smoothed cube
+    smooth_imagename = '{0}_smoothed'.format(imagename)
+    smooth_rms = calc_rms_from_image(smooth_imagename+'.image')
+    smooth_thresh = sigma * smooth_rms
+    # threshold the smoothed image into a new masked image
+    immath(imagename=smooth_imagename+'.image', mode='evalexpr',
+            outfile=imagename+'.smoothed.mask',
+            expr="iif(IM0>{0},1,0)".format(smooth_thresh))
+    # add the masks for an effective "binary OR" operation
+    outfile = '{0}.summask'.format(imagename)
+    immath(imagename=[imagename+'.unsmoothed.mask', imagename+'.smoothed.mask'],
+            mode='evalexpr', outfile=outfile, expr="iif(IM0+IM1>0,1,0)")
+    log_post('-- mask file written to: {0}'.format(outfile))
 
 
-def get_cube_robust(weighting):
+def format_cube_robust(weighting):
     if isinstance(weighting, (int, float)):
         return weighting, 'briggs'
     else:
@@ -759,8 +711,14 @@ def log_max_residual(imagename, resid_thresh=5):
 ###############################################################################
 
 class ImageConfig:
-    def __init__(self, dset, spw, dirty=False, fullcube=True,
-            weighting='natural'):
+    scales = [0, 15, 45]  # point, 1.5, 4.5 beam hpbw's (10 pix)
+    smallscalebias = -1.0
+    gain = 0.05
+    cyclefactor = 2.0
+    parallel = MPIEnvironment().is_mpi_enabled
+    autom_kwargs = AUTOM_KWARGS.copy()
+
+    def __init__(self, dset, spw, fullcube=True, weighting=0.5):
         """
         Configuration object for `tclean` related custom tasks. Parameters
         specify deconvolution and image-cube properties such as the weighting.
@@ -769,8 +727,6 @@ class ImageConfig:
         ----------
         dset : DataSet
         spw : Spw
-        dirty : bool
-            If True, restore image with an empty model.
         fullcube : bool
             Image the full spectral window or a small window around the SPWs
             defined rest frequency.
@@ -781,127 +737,285 @@ class ImageConfig:
         assert dset.setup == spw.setup
         self.dset = dset
         self.spw = spw
-        self.dirty = dirty
         self.fullcube = fullcube
-        weighting = 'natural'
+        # weighting method, must be valid for tclean
+        robust, weighting_kind = format_cube_robust(weighting)
+        self.weighting = weighting
+        self.robust = robust
+        self.weighting_kind = weighting_kind
+
+    @classmethod
+    def from_name(cls, field, label, kind='joint', **kwargs):
+        spw = ALL_SPWS[label]
+        dset = DataSet(field, setup=spw.setup, kind=kind)
+        return cls(dset, spw, **kwargs)
+
+    @property
+    def dirty_imagebase(self):
+        return self.get_imagebase(ext=DIRTY_EXT)
+
+    @property
+    def nomask_imagebase(self):
+        return self.get_imagebase(ext=NOMSK_EXT)
 
     @property
     def rms(self):
-        rms = calc_rms_from_image(self.dset, self.spw, self.weighting)
+        imagename = '{0}.image'.format(self.dirty_imagebase)
+        rms = calc_rms_from_image(imagename)
         log_post('-- RMS {0} Jy'.format(rms))
         return rms
 
     @property
-    def start_nchan(self):
-        start, nchan = get_cube_start_nchan(
-                self.dset, self.spw, self.weighting, self.fullcube, self.dirty,
-        )
+    def selected_start_nchan(self):
+        if self.fullcube:
+            # Restrict coverage to common coverage cross EBs.
+            start, nchan = calc_common_coverage_range(self.dirty_imagebase)
+        else:
+            # Restrict coverage to range around source velocity.
+            # NOTE This may produce undesirable behaviour if the line rest
+            #      frequency is next to the edge of the SPW.
+            start = self.dset.target.vstart
+            nchan = self.spw.win_chan
         return start, nchan
 
     @property
     def spw_ids(self):
-        return self.dset.spw_ids_from_name(self.spw)
+        """
+        Determine spectral window ID numbers based on the (unique) Data
+        Descriptor name found in the correlator configuration of the MS.
+        This avoids indexing issues between mixed sets of 12m & 7m EBs.
+        """
+        ot_name = self.spw.ot_name
+        spw_ids_for_vis = []
+        for filen in self.dset.vis:
+            msmd.open(filen)
+            # SPW data descriptor IDs just for science observations
+            sci_dds = msmd.spwsforintent('OBSERVE_TARGET#ON_SOURCE')
+            # list of SPW names from the science SPW DD IDs
+            spw_names = msmd.namesforspws(sci_dds)
+            msmd.close()
+            # select IDs that have corresponding matching names
+            matches = [
+                    dd for dd, name in zip(sci_dds, spw_names)
+                    if name.endswith(ot_name)
+            ]
+            if len(matches) == 0:
+                raise ValueError(
+                        'OT_NAME "{0}" not found in MS "{1}"'.format(ot_name, filen))
+            elif len(matches) >= 2:
+                raise ValueError(
+                        'Multiple matches found, is MS "{0}" concatenated?'.format(filen))
+            else:
+                spw_ids_for_vis.extend(matches)
+        return [str(n) for n in spw_ids_for_vis]
 
-    def format_imagename(self, ext=None):
-        return self.dset.get_imagename(self.spw, ext=ext)
+    def get_imagebase(self, ext=None):
+        """
+        Get the relative path name for an image basename following:
+            "images/<FIELD>/<LABEL>_<ARRAY>_<WEIGHTING>[_<EXT>]"
+        Note that this does not include image extensions such as ".image"
 
-
-def clean_line_target(config, mask_method='auto-multithresh', sigma=2,
-        ext=None):
-    """
-    Primary interface for cleaning spectral line windows for a given spectral
-    setup (i.e., `DataSet`) and spectral window (i.e., `Spw`).
-
-    Parameters
-    ----------
-    config : ImageConfig
-    mask_method : str
-        Masking method to use in the deconvolution process. Available methods:
-            'auto-multithresh' -- values for 12m/7m joint data
-            'taper' -- use mask generated from separate tapering run
-    sigma : number
-        Threshold in standard deviations of the noise to clean down to within
-        the clean-mask. An absolute RMS is calculated from off-line channels in
-        a dirty cube. The same value is applied to all channels.
-    ext : str
-        String of the form '_EXT' appended to the end of the image name.
-    """
-    dset, spw = config.dset, config.spw
-    # Book-keeping before run
-    im_ext = (weighting, ext) if ext is not None else str(weighting)
-    imagename = config.format_imagename(ext=im_ext)
-    log_post(':: Running clean ({0})'.format(imagename))
-    # calculate RMS values from off-line channels of dirty cube. If calculating
-    # the dirty cube itself, disregard.
-    if dirty:
-        rms = 0
-        niter = 0
-    else:
-        rms = config.rms
-        niter = NITERMAX
-    threshold = format_rms(rms, sigma=sigma)
-    # channel ranges: widowed, full cube, or common coverage
-    start, nchan = config.start_nchan
-    # weighting method, must be valid for tclean
-    robust, weighting_kind = get_cube_robust(weighting)
-    # masking method, auto-multithresh or mask from tapered run
-    if mask_method == 'auto-multithresh':
-        if dset.kind in ('joint', '12m'):
-            mask_kwargs = MASK_KWARGS
-        elif dset.kind == '7m':
-            raise NotImplementedError
+        Parameters
+        ----------
+        ext : (str, Iterable, object)
+            If `ext` is None, then compose path of setup, spw, array.
+            If `ext` is an iterable, append each by underscores.
+            If other object, must have a `__repr__` method for representation string.
+        """
+        stem = 'images/{0}/{1}_{2}_{3}'.format(
+                self.dset.field, self.spw.label, self.dset.kind, self.weighting)
+        if ext is None:
+            return stem
+        elif isinstance(ext, Iterable) and not isinstance(ext, str):
+            ext_items = '_'.join([str(i) for i in ext])
+            return '{0}_{1}'.format(stem, ext_items)
         else:
-            raise ValueError('No parameters available for dset.kind: "{0}"'.format(dset.kind))
-    elif mask_method == 'taper':
-        # user supplied mask from seperate tapering run
-        mask_kwargs = {
-                'usemask': 'user',
-                'mask': '{0}_taper.mask'.format(imagename),
-                }
-    else:
-        raise ValueError('Invalid mask_method: "{0}"'.format(mask_method))
-    # run tclean
-    parallel = MPIEnvironment().is_mpi_enabled
-    delete_all_extensions(imagename)
-    tclean(
-        vis=dset.vis,
-        imagename=imagename,
-        field=dset.field,
-        spw=config.spw_ids,
-        specmode='cube',
-        chanchunks=-1,
-        outframe='lsrk',
-        veltype='radio',
-        restfreq=spw.restfreq,
-        nchan=nchan,
-        start=start,
-        imsize=dset.imsize,
-        cell=dset.cell,
-        # gridder parameters
-        gridder=dset.gridder,
-        weighting=weighting_kind,
-        robust=robust,
-        perchanweightdensity=PERCHANWT,
-        # deconvolver parameters
-        deconvolver='multiscale',
-        scales=dset.scales,
-        smallscalebias=-0.2,
-        gain=0.05,
-        cyclefactor=1.35,
-        pblimit=dset.pblimit,
-        niter=niter,
-        threshold=threshold,
-        interactive=False,
-        parallel=parallel,
-        # mask parameters
-        **mask_kwargs
-    )
-    delete_workdir(imagename)
-    if parallel:
-        concat_parallel_all_extensions(imagename)
+            return '{0}_{1}'.format(stem, ext)
+
+    def make_dirty_cube(self):
+        dset, spw = self.dset, self.spw
+        # Book-keeping before run
+        imagename = self.dirty_imagebase
+        log_post(':: Creating dirty cube ({0})'.format(imagename))
+        # To create dirty cube simply perform zero iterations.
+        niter = 0
+        start = None
+        nchan = -1
+        # run tclean
+        delete_all_extensions(imagename)
+        tclean(
+            vis=dset.vis,
+            imagename=imagename,
+            field=dset.field,
+            spw=self.spw_ids,
+            specmode='cube',
+            chanchunks=-1,
+            outframe='lsrk',
+            veltype='radio',
+            restfreq=spw.restfreq,
+            nchan=nchan,
+            start=start,
+            imsize=dset.imsize,
+            cell=dset.cell,
+            # gridder parameters
+            gridder=dset.gridder,
+            weighting=self.weighting_kind,
+            robust=self.robust,
+            perchanweightdensity=PERCHANWT,
+            # deconvolver parameters
+            pblimit=dset.pblimit,
+            niter=niter,
+            interactive=False,
+            parallel=self.parallel,
+        )
+        self.cleanup(imagename)
+
+    def clean_line_nomask(self, sigma=4.5):
+        dset, spw = self.dset, self.spw
+        # Book-keeping before run
+        imagename = self.nomask_imagebase
+        log_post(':: Running clean ({0})'.format(imagename))
+        # Calculate RMS values from off-line channels of dirty cube.
+        threshold = format_rms(self.rms, sigma=sigma)
+        # channel ranges: windowed or common coverage
+        start, nchan = self.selected_start_nchan
+        # run tclean
+        delete_all_extensions(imagename)
+        tclean(
+            vis=dset.vis,
+            imagename=imagename,
+            field=dset.field,
+            spw=self.spw_ids,
+            specmode='cube',
+            chanchunks=-1,
+            outframe='lsrk',
+            veltype='radio',
+            restfreq=spw.restfreq,
+            nchan=nchan,
+            start=start,
+            imsize=dset.imsize,
+            cell=dset.cell,
+            # gridder parameters
+            gridder=dset.gridder,
+            weighting=self.weighting_kind,
+            robust=self.robust,
+            perchanweightdensity=PERCHANWT,
+            # deconvolver parameters
+            deconvolver='multiscale',
+            scales=self.scales,
+            smallscalebias=self.smallscalebias,
+            gain=self.gain,
+            cyclefactor=self.cyclefactor,
+            pblimit=dset.pblimit,
+            niter=NITERMAX,
+            threshold=threshold,
+            interactive=False,
+            parallel=self.parallel,
+            # no masking parameters applied
+            usemask='user',
+        )
+        self.cleanup(imagename)
+
+    def make_threshold_mask(self, sigma=5.0):
+        imagename = self.nomask_imagebase
+        if not os.path.exists(imagename+'.image'):
+            log_post('-- File not found: {0}.image'.format(imagename))
+            log_post('-- Has the unmasked call to tclean been run?')
+            raise IOError
+        make_threshold_based_mask(imagename, sigma=sigma)
+
+    def clean_line(self, mask_method='auto-multithresh', sigma=2,
+            ext=None):
+        """
+        Primary interface for calling `tclean` to deconvolve spectral windows.
+
+        Parameters
+        ----------
+        mask_method : str
+            Masking method to use in the deconvolution process. Available methods:
+                'auto-multithresh' -- use auto-multithresh automated masking
+                'seed+multithresh' -- generate initial mask from free clean
+                    and then use auto-multithresh for automatic masking.
+                'taper' -- use mask generated from separate tapering run
+        sigma : number
+            Threshold in standard deviations of the noise to clean down to within
+            the clean-mask. An absolute RMS is calculated from off-line channels in
+            a dirty cube. The same value is applied to all channels.
+        ext : str
+            String of the form '_EXT' appended to the end of the image name.
+        """
+        dset, spw = self.dset, self.spw
+        # Book-keeping before run
+        imagename = self.get_imagebase(ext=ext)
+        log_post(':: Running clean ({0})'.format(imagename))
+        # Calculate RMS values from off-line channels of dirty cube.
+        threshold = format_rms(self.rms, sigma=sigma)
+        # channel ranges: windowed or common coverage
+        start, nchan = self.selected_start_nchan
+        # masking method, auto-multithresh or mask from tapered run
+        if mask_method == 'auto-multithresh' or mask_method == 'seed+multithresh':
+            if dset.kind in ('joint', '12m'):
+                mask_kwargs = self.autom_kwargs
+            elif dset.kind == '7m':
+                raise NotImplementedError
+            else:
+                raise ValueError('No parameters available for dset.kind: "{0}"'.format(dset.kind))
+        elif mask_method == 'taper':
+            # user supplied mask from seperate tapering run
+            mask_kwargs = {
+                    'usemask': 'user',
+                    'mask': '{0}_taper.mask'.format(imagename),
+                    }
+        else:
+            raise ValueError('Invalid mask_method: "{0}"'.format(mask_method))
+        # run tclean
+        delete_all_extensions(imagename)
+        if mask_method == 'seed+multithresh':
+            # copy summask to be used in-place with default extension
+            mask_filen = self.nomask_imagebase + '.summask'
+            shutil.copytree(mask_filen, imagename+'.mask')
+        tclean(
+            vis=dset.vis,
+            imagename=imagename,
+            field=dset.field,
+            spw=self.spw_ids,
+            specmode='cube',
+            chanchunks=-1,
+            outframe='lsrk',
+            veltype='radio',
+            restfreq=spw.restfreq,
+            nchan=nchan,
+            start=start,
+            imsize=dset.imsize,
+            cell=dset.cell,
+            # gridder parameters
+            gridder=dset.gridder,
+            weighting=self.weighting_kind,
+            robust=self.robust,
+            perchanweightdensity=PERCHANWT,
+            # deconvolver parameters
+            deconvolver='multiscale',
+            scales=self.scales,
+            smallscalebias=self.smallscalebias,
+            gain=self.gain,
+            cyclefactor=self.cyclefactor,
+            pblimit=dset.pblimit,
+            niter=NITERMAX,
+            threshold=threshold,
+            interactive=False,
+            parallel=self.parallel,
+            # mask parameters
+            **mask_kwargs
+        )
+        self.cleanup(imagename)
+
+    def cleanup(self, imagename):
+        delete_workdir(imagename)
+        if self.parallel:
+            concat_parallel_all_extensions(imagename)
 
 
-def clean_line_target_nomask(config, sigma=10):
+def test_clean_line_target_nomask(config, sigma=10):
     """
     Parameters
     ----------
@@ -909,17 +1023,18 @@ def clean_line_target_nomask(config, sigma=10):
     sigma : number
         Global clean threshold in sigma based on the dirty cube RMS/MAD
     """
+    # NOTE Exploratory test code for unmasked clean
     dset, spw = config.dset, config.spw
     # Book-keeping before run
     im_ext = (weighting, NOMSK_EXT)
-    imagename = config.format_imagename(ext=im_ext)
+    imagename = config.get_imagebase(ext=im_ext)
     log_post(':: Running unmasked clean ({0})'.format(imagename))
     # compute RMS values from off-line channels of dirty cube.
     threshold = format_rms(config.rms, sigma=sigma)
     # channel ranges: widowed or full cube
     start, nchan = config.start_nchan
     # weighting method, must be valid for tclean
-    robust, weighting_kind = get_cube_robust(weighting)
+    robust, weighting_kind = format_cube_robust(weighting)
     # run tclean
     parallel = MPIEnvironment().is_mpi_enabled
     delete_all_extensions(imagename)
@@ -944,7 +1059,7 @@ def clean_line_target_nomask(config, sigma=10):
         perchanweightdensity=PERCHANWT,
         # deconvolver parameters
         deconvolver='multiscale',
-        scales=dset.scales,
+        scales=config.scales,
         smallscalebias=-0.2,
         gain=0.05,
         cyclefactor=1.35,
@@ -963,12 +1078,14 @@ def clean_line_target_nomask(config, sigma=10):
         concat_parallel_all_extensions(imagename)
 
 
-def clean_line_target_taper(dset, spw, dirty=False, fullcube=True,
+def test_clean_line_target_taper(dset, spw, dirty=False, fullcube=True,
         taper='1.8arcsec'):
     """
     Image data with a taper in the visibility domain from which to generate a
     smooth mask using the auto-multithresh method.
     """
+    # NOTE This is legacy code from an exploratory masking approach based
+    #      on a tapered image, needs to be refactored into ImageConfig.
     assert dset.setup == spw.setup
     # Book-keeping before run
     log_post(':: Running tapered clean ({0}, {1})'.format(dset.setup, spw.spw_id))
@@ -1018,11 +1135,14 @@ def clean_line_target_taper(dset, spw, dirty=False, fullcube=True,
     delete_workdir(imagename)
 
 
-def clean_line_target_acaonly(dset, spw, dirty=False, fullcube=True, ext=None):
+def test_clean_line_target_acaonly(dset, spw, dirty=False, fullcube=True,
+        ext=None):
     """
     Image the 7m data by itself and create a convolved model to be used as a
     starting model for a joint deconvolution with the 12m data.
     """
+    # FIXME Code should be re-factored into ImageConfig, probably just need
+    #       to make it so the auto-multithresh parameters for 7m are used.
     assert dset.kind == '7m'
     assert dset.setup == spw.setup
     # Book-keeping before run
@@ -1092,23 +1212,12 @@ def clean_line_target_acaonly(dset, spw, dirty=False, fullcube=True, ext=None):
     # Attenuate by 12m PB
 
 
-def image_line_windowed_dirty(dset, spw, weighting, fullcube=False):
-    """
-    Routine to generate the windowed dirty cubes used in the RMS calculation.
-    Note that the same value for `fullcube` should be used for both the dirty
-    and the cleaned versions of the cube.
-    """
-    clean_line_target(dset, spw, weighting=weighting, dirty=True,
-            fullcube=fullcube, ext=DIRTY_EXT)
-
-
-def image_all_lines_inspect_dirty(dset, weightings=None, fullcube=False):
-    weightings = WEIGHTINGS if weightings is None else weightings
-    spws = ALL_SPW_SETS[dset.setup]
-    for spw_id, spw in spws.items():
-        log_post(':: Cleaning SPW {0}: {1}'.format(spw_id, spw.name))
-        for weighting in weightings:
-            image_line_windowed_dirty(dset, spw, weighting, fullcube=fullcube)
+def make_all_line_dirty_cubes(dset, weighting=0.5, fullcube=True):
+    setup = dset.setup
+    log_post(':: Creating all dirty cubes for Setup-{0}'.format(setup))
+    for spw in SPWS_BY_SETUP[setup].values():
+        config = ImageConfig(dset, spw, weighting=weighting, fullcube=fullcube)
+        config.make_dirty_cube()
 
 
 def postproc_all_cleaned_images(dset):
@@ -1118,36 +1227,36 @@ def postproc_all_cleaned_images(dset):
         postproc_image_to_common(imagename)
 
 
-def clean_all_lines_with_masking(dset, weightings=None, fullcube=False):
-    weightings = WEIGHTINGS if weightings is None else weightings
-    spws = ALL_SPW_SETS[dset.setup]
-    for spw_id, spw in spws.items():
-        log_post(':: Cleaning SPW {0}: {1}'.format(spw_id, spw.name))
-        kwargs = {'dirty': False, 'fullcube': fullcube, 'mask_method':
-                'auto-multithresh', 'ext': 'am'}
-        for weighting in weightings:
-            image_line_windowed_dirty(dset, spw, weighting, fullcube=fullcube)
-            clean_line_target(dset, spw, weighting=weighting, **kwargs)
-            ext = (weighting, kwargs['ext'])
-            imagebase = dset.get_imagename(spw, ext=ext)
-            primary_beam_correct(imagebase)
-            smooth_cube_to_common_beam(imagebase+'.image')
-            smooth_cube_to_common_beam(imagebase+'.pbcor')
-
-
-def run_pipeline(dset, weightings=None):
+def run_pipeline(field, weightings=None, fullcube=True):
     """
-    Run all pipeline tasks.
+    Run all pipeline tasks over all setups, spectral windows, and
+    uv-weightings.
 
     Parameters
     ----------
     dset : DataSet
-    weightings : iterable, default ('natural', 0.5)
+    weightings : iterable, default (0.5,)
         List of uv-weightings to use in `tclean`, which may include the string
         "natural" or a number for the briggs robust parameter.
+    fullcube : bool
+        Image the full spectral window or a small window around the SPWs
+        defined rest frequency.
     """
     weightings = WEIGHTINGS if weightings is None else weightings
-    clean_all_lines_with_masking(dset, fullcube=True, weightings=weightings)
+    for setup, spw_set in SPWS_BY_SETUP.items():
+        dset = DataSet(field, setup=setup, kind='joint')
+        for spw in spw_set.values():
+            log_post(':: Imaging Setup-{0} {1}'.format(setup, spw.label))
+            for weighting in weightings:
+                config = ImageConfig(dset, spw, fullcube=fullcube, weighting=weighting)
+                config.make_dirty_cube()
+                config.clean_line_nomask(sigma=4.5)
+                config.make_threshold_mask(sigma=5.0)
+                config.clean_line(make_method='seed+multithresh', ext='am')
+                imagebase = config.get_imagebase(ext='am')
+                primary_beam_correct(imagebase)
+                smooth_cube_to_common_beam(imagebase+'.image')
+                smooth_cube_to_common_beam(imagebase+'.pbcor')
     # TODO:
     #   - export fits
     #   - create moment maps
@@ -1159,21 +1268,17 @@ def run_pipeline(dset, weightings=None):
 ###############################################################################
 
 def test_perchanwt():
-    dset = DataSet('CB68', setup=2, kind='joint')
-    spw = ALL_SPW_SETS[2][29]
     # mutate globals used within the scope of several functions
     global PERCHANWT
     global DIRTY_EXT
     for weighting in ('natural', 0.5):
+        config = ImageConfig.from_name('CB68', '244.936GHz_CS', fullcube=True,
+                weighting=weighting)
         for perchanwt in (True, False):
             PERCHANWT = perchanwt
             DIRTY_EXT = 'dirtyPCW{0}'.format(perchanwt)
-            # create dirty cube
-            clean_line_target(dset, spw, weighting=weighting, dirty=True,
-                    fullcube=True, ext=DIRTY_EXT)
-            # create clean cube
-            clean_line_target(dset, spw, weighting=weighting, dirty=False,
-                    fullcube=True, ext='PCW{0}'.format(perchanwt))
+            config.make_dirty_cube()
+            config.clean_line_target(ext='PCW{0}'.format(perchanwt))
     # reset back to global defaults
     PERCHANWT = True
     DIRTY_EXT = 'dirty'
