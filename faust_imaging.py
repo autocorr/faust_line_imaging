@@ -65,9 +65,8 @@ AUTOM_KWARGS = {
         'noisethreshold': 5.0,
         'sidelobethreshold': 2.0,
         'lownoisethreshold': 1.0,
-        'minbeamfrac': 0.1,
+        'minbeamfrac': 0.001,
         'negativethreshold': 5.0,
-        'pbmask': 0.2,
         'growiterations': 1000,
         'dogrowprune': False,
         'fastnoise': False,
@@ -398,6 +397,7 @@ ALL_SPWS = {}
 ALL_SPWS.update(SPW_S1)
 ALL_SPWS.update(SPW_S2)
 ALL_SPWS.update(SPW_S3)
+ALL_SPW_LABELS = ALL_SPWS.keys()
 
 
 ###############################################################################
@@ -406,8 +406,9 @@ ALL_SPWS.update(SPW_S3)
 
 def log_post(msg):
     """
-    Post a message to the CASA logger and logfile.
+    Post a message to the CASA logger, logfile, and stdout/console.
     """
+    print(msg)
     casalog.post(msg, 'INFO', 'faust_pipe')
 
 
@@ -584,7 +585,7 @@ def primary_beam_correct(imagebase):
     impbcor(
             imagename=imagebase+'.image',
             pbimage=imagebase+'.pb',
-            outfile=imagebase+'.pbcor',
+            outfile=imagebase+'.image.pbcor',
             overwrite=True,
     )
 
@@ -633,45 +634,71 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     return rms
 
 
-def make_threshold_based_mask(imagename, sigma=5.0, kernel_width=1):
+def create_mask_from_threshold(infile, outfile, sigma):
+    rms = calc_rms_from_image(infile)
+    thresh = sigma * rms
+    immath(imagename=infile, mode='evalexpr', outfile=outfile,
+            expr='iif(IM0>{0},1,0)'.format(thresh))
+
+
+def make_multiscale_joint_mask(imagename, sigma=5.0, scales=(0, 1, 3)):
     """
-    Threshold an existing image to create a mask.
+    Create a joint mask from multiple smoothed copies of an image. A file
+    with the `.summask` extension is created from the union of an RMS threshold
+    applied to each image. The RMS is re-computed for each smoothed cube.
 
     Parameters
     ----------
     imagename : str
-    kernel_width : number
+        Image name base without the extension.
     sigma : number
+        Multiple of the RMS to threshold each image.
+    scales : Iterable(number)
+        Gaussian kernel FWHM in arcseconds to convolve each image with.
+
+    Results
+    -------
+        Files are written for each smoothing scale:
+            smoothed image: '<IMG>_smooth{.3f}.image' (excluding scale=0)
+            masked image:   '<IMG>_smooth{.3f}.mask'
+        and the joint or unioned mask file across scales is written to:
+            joint mask:     '<IMG>.summask'
     """
     log_post(':: Creating threshold based mask')
-    rms = calc_rms_from_image(imagename+'.image')
-    thresh = sigma * rms
-    # threshold the partially cleaned image at native resolution
-    immath(imagename=imagename+'.image',
-            mode='evalexpr', outfile=imagename+'.unsmoothed.mask',
-            expr="iif(IM0>{0},1,0)".format(thresh))
-    # smooth the image with a Gaussian kernel
-    imsmooth(imagename=imagename+'.image', kernel='gauss',
-            major='{0}arcsec'.format(kernel_width),
-            minor='{0}arcsec'.format(kernel_width), pa='0deg',
-            targetres=True, outfile=imagename+'_smoothed.image')
-    # PB mask is deleted after smoothing, so copy it back in from the PB
-    makemask(mode='copy', inpimage=imagename+'.pb',
-            inpmask=imagename+'.pb:mask0',
-            output=imagename+'_smoothed.image:mask0', overwrite=True)
-    # recompute the RMS noise for the smoothed cube
-    smooth_imagename = '{0}_smoothed'.format(imagename)
-    smooth_rms = calc_rms_from_image(smooth_imagename+'.image')
-    smooth_thresh = sigma * smooth_rms
-    # threshold the smoothed image into a new masked image
-    immath(imagename=smooth_imagename+'.image', mode='evalexpr',
-            outfile=imagename+'.smoothed.mask',
-            expr="iif(IM0>{0},1,0)".format(smooth_thresh))
-    # add the masks for an effective "binary OR" operation
+    n_scales = len(scales)
+    original_image = '{0}.image'.format(imagename)
+    pb_image = '{0}.pb'.format(imagename)
+    base_names = [
+            '{0}_smooth{1:.3f}'.format(imagename, s)
+            for s in scales
+    ]
+    mask_files = [s+'.mask' for s in base_names]
+    image_files = [s+'.image' for s in base_names]
+    for scale, smooth_image, mask_image in zip(scales, image_files, mask_files):
+        assert scale >= 0
+        if scale == 0:
+            # For a smoothing scale of zero, use the original image.
+            create_mask_from_threshold(original_image, mask_image, sigma)
+            continue
+        # Smooth the image with a Gaussian kernel of the given scale.
+        imsmooth(imagename=original_image, kernel='gauss',
+                major='{0}arcsec'.format(scale),
+                minor='{0}arcsec'.format(scale), pa='0deg', targetres=True,
+                outfile=smooth_image)
+        # PB mask is erased after smoothing, so copy it back in from the PB
+        makemask(mode='copy', inpimage=pb_image, inpmask=pb_image+':mask0',
+                output=smooth_image+':mask0', overwrite=True)
+        # Threshold the image to create a mask
+        create_mask_from_threshold(smooth_image, mask_image, sigma)
+    # Add all of the masks for an effective chained "binary OR" operation
+    sum_expr = '+'.join([
+            'IM{0}'.format(i)
+            for i in range(n_scales)
+    ])
     outfile = '{0}.summask'.format(imagename)
-    immath(imagename=[imagename+'.unsmoothed.mask', imagename+'.smoothed.mask'],
-            mode='evalexpr', outfile=outfile, expr="iif(IM0+IM1>0,1,0)")
-    log_post('-- mask file written to: {0}'.format(outfile))
+    immath(imagename=mask_files, mode='evalexpr', outfile=outfile,
+            expr='iif({0}>0,1,0)'.format(sum_expr))
+    log_post('-- joint mask file written to: {0}'.format(outfile))
 
 
 def format_cube_robust(weighting):
@@ -686,24 +713,32 @@ def format_rms(rms, sigma=1, unit='Jy'):
     return '{0}{1}'.format(sigma*rms, unit)
 
 
-def log_max_residual(imagename, resid_thresh=5):
-    # FIXME
-    imagename = '{0}.residual'.format(imagename)
-    stats = imstat(imagename=imagename, axes=[0, 1])
-    max_resid = max(stats['max'], abs(stats['min'])) / stats['rms']
-    if max_resid > resid_thresh:
-        log_post('-- WARNING: max residual threshold exceeded')
-        log_post('-- maximum residual:   {0}'.format(max_resid))
-        log_post('-- residual threshold: {0}'.format(resid_thresh))
-        #print "test = ",test
-        #print "WARNING: residual exceeds 5-sigma limit"
-        #print "max: ",stats['max']," maxpos: ",stats['maxpos']
-        #print "min: ",stats['min']," minpos: ",stats['minpos']
-    #stats=imstat(imagename=imname+'.image')
-    #test=max(stats['max'],abs(stats['min']))/stats['rms']
-    #print "SNR in image = ",test
-    #print "max: ",stats['max']," maxpos: ",stats['maxpos']
-    #print "min: ",stats['min']," minpos: ",stats['minpos']
+def check_max_residual(imagebase, sigma=5):
+    """
+    Check the residual image cube for channels with deviations higher than a
+    multiple of the global RMS.
+
+    Parameters
+    ----------
+    imagebase : str
+        Image name without extension.
+    sigma : number
+        Threshold to apply as a multiple of the RMS.
+    """
+    imagename = '{0}.residual'.format(imagebase)
+    if not os.path.exists(imagename):
+        raise OSError('File not found: {0}'.format(imagename))
+    stats = imstat(imagename=imagename)  # over all channels
+    rms = MAD_TO_RMS * stats['medabsdevmed'][0]
+    v_max = stats['max'][0]
+    v_min = stats['min'][0]
+    max_resid = max(v_max, abs(v_min)) / rms
+    if max_resid > sigma:
+        log_post('!! WARNING: maximum residual threshold exceeded')
+        log_post('-- maximum residual: {0}'.format(max_resid))
+        log_post('-- residual threshold: {0} ({1}-sigma)'.format(sigma*rms, sigma))
+        log_post('-- max: {0}, index: {1}'.format(v_max, stats['maxpos']))
+        log_post('-- min: {0}, index: {1}'.format(v_min, stats['minpos']))
 
 
 ###############################################################################
@@ -712,6 +747,7 @@ def log_max_residual(imagename, resid_thresh=5):
 
 class ImageConfig:
     scales = [0, 15, 45]  # point, 1.5, 4.5 beam hpbw's (10 pix)
+    mask_scales = [0, 1, 3]  # arcsec
     smallscalebias = -1.0
     gain = 0.05
     cyclefactor = 2.0
@@ -822,7 +858,7 @@ class ImageConfig:
             If `ext` is an iterable, append each by underscores.
             If other object, must have a `__repr__` method for representation string.
         """
-        stem = 'images/{0}/{1}_{2}_{3}'.format(
+        stem = 'images/{0}/{0}_{1}_{2}_{3}'.format(
                 self.dset.field, self.spw.label, self.dset.kind, self.weighting)
         if ext is None:
             return stem
@@ -916,13 +952,14 @@ class ImageConfig:
         )
         self.cleanup(imagename)
 
-    def make_threshold_mask(self, sigma=5.0):
+    def make_seed_mask(self, sigma=5.0):
         imagename = self.nomask_imagebase
         if not os.path.exists(imagename+'.image'):
             log_post('-- File not found: {0}.image'.format(imagename))
             log_post('-- Has the unmasked call to tclean been run?')
             raise IOError
-        make_threshold_based_mask(imagename, sigma=sigma)
+        make_multiscale_joint_mask(imagename, sigma=sigma,
+                scales=self.mask_scales)
 
     def clean_line(self, mask_method='auto-multithresh', sigma=2,
             ext=None):
@@ -1014,202 +1051,18 @@ class ImageConfig:
         if self.parallel:
             concat_parallel_all_extensions(imagename)
 
-
-def test_clean_line_target_nomask(config, sigma=10):
-    """
-    Parameters
-    ----------
-    config : ImageConfig
-    sigma : number
-        Global clean threshold in sigma based on the dirty cube RMS/MAD
-    """
-    # NOTE Exploratory test code for unmasked clean
-    dset, spw = config.dset, config.spw
-    # Book-keeping before run
-    im_ext = (weighting, NOMSK_EXT)
-    imagename = config.get_imagebase(ext=im_ext)
-    log_post(':: Running unmasked clean ({0})'.format(imagename))
-    # compute RMS values from off-line channels of dirty cube.
-    threshold = format_rms(config.rms, sigma=sigma)
-    # channel ranges: widowed or full cube
-    start, nchan = config.start_nchan
-    # weighting method, must be valid for tclean
-    robust, weighting_kind = format_cube_robust(weighting)
-    # run tclean
-    parallel = MPIEnvironment().is_mpi_enabled
-    delete_all_extensions(imagename)
-    # initial clean without masking
-    tclean(
-        vis=dset.vis,
-        imagename=imagename,
-        field=dset.field,
-        spw=config.spw_ids,
-        specmode='cube',
-        outframe='lsrk',
-        veltype='radio',
-        restfreq=spw.restfreq,
-        nchan=nchan,
-        start=start,
-        imsize=dset.imsize,
-        cell=dset.cell,
-        # gridder parameters
-        gridder=dset.gridder,
-        weighting=weighting_kind,
-        robust=robust,
-        perchanweightdensity=PERCHANWT,
-        # deconvolver parameters
-        deconvolver='multiscale',
-        scales=config.scales,
-        smallscalebias=-0.2,
-        gain=0.05,
-        cyclefactor=1.35,
-        pblimit=dset.pblimit,
-        niter=NITERMAX,
-        threshold=threshold,
-        interactive=False,
-        parallel=parallel,
-        chanchunks=-1,
-        # mask parameters
-        usemask='pb',
-        pbmask=0.4,
-    )
-    delete_workdir(imagename)
-    if parallel:
-        concat_parallel_all_extensions(imagename)
-
-
-def test_clean_line_target_taper(dset, spw, dirty=False, fullcube=True,
-        taper='1.8arcsec'):
-    """
-    Image data with a taper in the visibility domain from which to generate a
-    smooth mask using the auto-multithresh method.
-    """
-    # NOTE This is legacy code from an exploratory masking approach based
-    #      on a tapered image, needs to be refactored into ImageConfig.
-    assert dset.setup == spw.setup
-    # Book-keeping before run
-    log_post(':: Running tapered clean ({0}, {1})'.format(dset.setup, spw.spw_id))
-    imagename = dset.get_imagename(spw, ext='taper')
-    niter = 0 if dirty else NITERMAX
-    # FIXME RMS hard-coded
-    threshold = '9mJy'  # 1.5sigma, RMS 6.0 mJy/bm
-    start = None if fullcube else dset.target.vstart
-    nchan = -1 if fullcube else spw.win_chan
-    spw_ids = dset.spw_ids_from_name(spw)
-    # run tclean
-    delete_all_extensions(imagename)
-    tclean(
-        vis=dset.vis,
-        imagename=imagename,
-        field=dset.field,
-        spw=spw_ids,
-        specmode='cube',
-        outframe='lsrk',
-        veltype='radio',
-        restfreq=spw.restfreq,
-        nchan=nchan,
-        start=start,
-        imsize=dset.imsize,
-        cell=dset.cell,
-        # gridder parameters
-        gridder='mosaic',
-        uvtaper=[taper],
-        weighting='natural',
-        # deconvolver parameters
-        deconvolver='hogbom',
-        pblimit=dset.pblimit,
-        niter=niter,
-        threshold=threshold,
-        interactive=False,
-        parallel=MPIEnvironment().is_mpi_enabled,
-        # automasking parameters, use ACA 7m values
-        usemask='auto-multithresh',
-        noisethreshold=5.0,
-        sidelobethreshold=1.25,
-        lownoisethreshold=2.0,
-        minbeamfrac=0.1,
-        negativethreshold=1000.0,
-        fastnoise=False,
-        verbose=True,
-    )
-    delete_workdir(imagename)
-
-
-def test_clean_line_target_acaonly(dset, spw, dirty=False, fullcube=True,
-        ext=None):
-    """
-    Image the 7m data by itself and create a convolved model to be used as a
-    starting model for a joint deconvolution with the 12m data.
-    """
-    # FIXME Code should be re-factored into ImageConfig, probably just need
-    #       to make it so the auto-multithresh parameters for 7m are used.
-    assert dset.kind == '7m'
-    assert dset.setup == spw.setup
-    # Book-keeping before run
-    log_post(':: Running clean ({0}, {1})'.format(dset.setup, spw.spw_id))
-    # weighting pinned to 'natural' for ACA data
-    im_ext = '{0}_{1}'.format(weighting, ext) if ext is not None else str(weighting)
-    imagename = dset.get_imagename(spw, ext=im_ext)
-    niter = 0 if dirty else NITERMAX
-    # calculate RMS values from off-line channels of dirty cube. If calculating
-    # the dirty cube itself, disregard.
-    if dirty:
-        rms = 0
-    else:
-        rms = calc_rms_from_image(dset, spw, 'natural')
-        log_post('-- RMS {0} Jy'.format(rms))
-    threshold = format_rms(rms, sigma=2)
-    # channel ranges: widowed or full cube
-    start = None if fullcube else dset.target.vstart
-    nchan = -1 if fullcube else spw.win_chan
-    spw_ids = dset.spw_ids_from_name(spw)
-    # run tclean
-    delete_all_extensions(imagename)
-    tclean(
-        vis=dset.vis,
-        imagename=imagename,
-        field=dset.field,
-        spw=spw_ids,
-        specmode='cube',
-        outframe='lsrk',
-        veltype='radio',
-        restfreq=spw.restfreq,
-        nchan=nchan,
-        start=start,
-        imsize=dset.imsize,
-        cell=dset.cell,
-        # gridder parameters
-        gridder=dset.gridder,
-        weighting='natural',
-        robust=None,
-        # deconvolver parameters
-        deconvolver='multiscale',
-        scales=[0, 10, 20],  # point, 1, 2 beam hpbw's
-        smallscalebias=-0.2,
-        gain=0.05,
-        cyclefactor=1.35,
-        pblimit=dset.pblimit,
-        niter=niter,
-        threshold=threshold,
-        interactive=False,
-        parallel=MPIEnvironment().is_mpi_enabled,
-        # automasking parameters, use ACA 7m values
-        usemask='auto-multithresh',
-        noisethreshold=4.0,
-        sidelobethreshold=1.25,
-        lownoisethreshold=2.0,
-        minbeamfrac=0.1,
-        negativethreshold=1000.0,
-        fastnoise=False,
-        verbose=True,
-    )
-    delete_workdir(imagename)
-    # TODO -- steps to use as startmodel
-    # Get the synthesized beam from image metadata
-    # Convolve the model with the beam size (eff. image-resid=C(model))
-    # PB correct for 7m
-    # Regrid to 12m cell/imsize; check units are still correct for Jy/pix
-    # Attenuate by 12m PB
+    def run_pipeline(self, make_fits=True):
+        self.make_dirty_cube()
+        self.clean_line_nomask(sigma=4.5)
+        self.make_seed_mask(sigma=5.0)
+        self.clean_line(make_method='seed+multithresh', ext='clean')
+        imagebase = self.get_imagebase(ext='clean')
+        check_max_residual(imagebase, sigma=5.0)
+        primary_beam_correct(imagebase)
+        for ext in ('.image', '.image.pbcor'):
+            smooth_cube_to_common_beam(imagebase+ext)
+            if make_fits:
+                export_fits(imagebase+ext+'.common')
 
 
 def make_all_line_dirty_cubes(dset, weighting=0.5, fullcube=True):
@@ -1235,7 +1088,7 @@ def run_pipeline(field, weightings=None, fullcube=True):
     Parameters
     ----------
     dset : DataSet
-    weightings : iterable, default (0.5,)
+    weightings : Iterable, default (0.5,)
         List of uv-weightings to use in `tclean`, which may include the string
         "natural" or a number for the briggs robust parameter.
     fullcube : bool
@@ -1249,16 +1102,8 @@ def run_pipeline(field, weightings=None, fullcube=True):
             log_post(':: Imaging Setup-{0} {1}'.format(setup, spw.label))
             for weighting in weightings:
                 config = ImageConfig(dset, spw, fullcube=fullcube, weighting=weighting)
-                config.make_dirty_cube()
-                config.clean_line_nomask(sigma=4.5)
-                config.make_threshold_mask(sigma=5.0)
-                config.clean_line(make_method='seed+multithresh', ext='am')
-                imagebase = config.get_imagebase(ext='am')
-                primary_beam_correct(imagebase)
-                smooth_cube_to_common_beam(imagebase+'.image')
-                smooth_cube_to_common_beam(imagebase+'.pbcor')
+                config.run_pipeline()
     # TODO:
-    #   - export fits
     #   - create moment maps
     #   - create diagnostic plots (channel maps and moments)
 
