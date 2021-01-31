@@ -20,7 +20,7 @@ import os
 import shutil
 import datetime
 from glob import glob
-from collections import (namedtuple, OrderedDict, Iterable)
+from collections import (OrderedDict, Iterable)
 
 import numpy as np
 import scipy as sp
@@ -467,24 +467,19 @@ def delete_all_extensions(imagename, keep_exts=None):
     for filen in glob(imagename+'.*'):
         if keep_exts is not None and any(filen.endswith(ext) for ext in keep_exts):
             continue
+        if_exists_remove(filen)
+
+
+def if_exists_remove(filen):
+    if os.path.exists(filen):
+        log_post(':: Removing {0}'.format(filen))
         try:
-            log_post(':: Removing {0}'.format(filen))
             rmtables(filen)
+            # the file will still exist if rmtables failed
             shutil.rmtree(filen)
-            log_post('-- Hard Delete!')
+            log_post('-- Hard delete: {0}'.format(filen))
         except OSError:
             pass
-
-
-def export_fits(imagename, velocity=False, overwrite=True):
-    log_post(':: Exporting fits')
-    exportfits(imagename, imagename+'.fits', dropstokes=True,
-            velocity=velocity, overwrite=overwrite)
-
-
-def if_exists_remove(imagename):
-    if os.path.exists(imagename):
-        rmtables(imagename)
 
 
 def delete_workdir(imagename):
@@ -507,6 +502,12 @@ def replace_existing_file_with_new(old_filen, new_filen):
         log_post('-- Hard delete! "{0}"'.format(old_filen))
         shutil.rmtree(old_filen)
     os.rename(new_filen, old_filen)
+
+
+def export_fits(imagename, velocity=False, overwrite=True):
+    log_post(':: Exporting fits')
+    exportfits(imagename, imagename+'.fits', dropstokes=True,
+            velocity=velocity, overwrite=overwrite)
 
 
 def concat_parallel_image(imagename):
@@ -641,7 +642,8 @@ def create_mask_from_threshold(infile, outfile, sigma):
             expr='iif(IM0>{0},1,0)'.format(thresh))
 
 
-def make_multiscale_joint_mask(imagename, sigma=5.0, scales=(0, 1, 3)):
+def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3),
+        overwrite=True):
     """
     Create a joint mask from multiple smoothed copies of an image. A file
     with the `.summask` extension is created from the union of an RMS threshold
@@ -653,8 +655,11 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, scales=(0, 1, 3)):
         Image name base without the extension.
     sigma : number
         Multiple of the RMS to threshold each image.
-    scales : Iterable(number)
-        Gaussian kernel FWHM in arcseconds to convolve each image with.
+    mask_ang_scales : Iterable(number)
+        Gaussian kernel FWHM in units of arcseconds to convolve each image
+        with (note: not in pixel units).
+    overwrite : bool
+        Whether to overwrite the smoothed mask files if they exist.
 
     Results
     -------
@@ -665,21 +670,24 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, scales=(0, 1, 3)):
             joint mask:     '<IMG>.summask'
     """
     log_post(':: Creating threshold based mask')
-    n_scales = len(scales)
+    n_scales = len(mask_ang_scales)
     original_image = '{0}.image'.format(imagename)
     pb_image = '{0}.pb'.format(imagename)
     base_names = [
             '{0}_smooth{1:.3f}'.format(imagename, s)
-            for s in scales
+            for s in mask_ang_scales
     ]
     mask_files = [s+'.mask' for s in base_names]
     image_files = [s+'.image' for s in base_names]
-    for scale, smooth_image, mask_image in zip(scales, image_files, mask_files):
+    for scale, smooth_image, mask_image in zip(mask_ang_scales, image_files, mask_files):
         assert scale >= 0
         if scale == 0:
             # For a smoothing scale of zero, use the original image.
             create_mask_from_threshold(original_image, mask_image, sigma)
             continue
+        if overwrite:
+            if_exists_remove(smooth_image)
+            if_exists_remove(mask_image)
         # Smooth the image with a Gaussian kernel of the given scale.
         imsmooth(imagename=original_image, kernel='gauss',
                 major='{0}arcsec'.format(scale),
@@ -696,6 +704,7 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, scales=(0, 1, 3)):
             for i in range(n_scales)
     ])
     outfile = '{0}.summask'.format(imagename)
+    if_exists_remove(outfile)
     immath(imagename=mask_files, mode='evalexpr', outfile=outfile,
             expr='iif({0}>0,1,0)'.format(sum_expr))
     log_post('-- joint mask file written to: {0}'.format(outfile))
@@ -746,8 +755,8 @@ def check_max_residual(imagebase, sigma=5):
 ###############################################################################
 
 class ImageConfig:
-    scales = [0, 15, 45]  # point, 1.5, 4.5 beam hpbw's (10 pix)
-    mask_scales = [0, 1, 3]  # arcsec
+    scales = [0, 15, 45, 135]  # pixels; point, 1.5, 4.5 beam hpbw's (10 pix)
+    mask_ang_scales = [0, 1, 3]  # arcsec
     smallscalebias = -1.0
     gain = 0.05
     cyclefactor = 2.0
@@ -906,7 +915,22 @@ class ImageConfig:
         )
         self.cleanup(imagename)
 
-    def clean_line_nomask(self, sigma=4.5):
+    def clean_line_nomask(self, sigma=4.5, scale_upper_limit=60):
+        """
+        Parameters
+        ----------
+        sigma : number
+            Global threshold to clean down to computed as multiple of the
+            full-cube RMS.
+        scale_upper_limit : number, None
+            Restrict the scales (in pixels) used by multi-scale clean to values
+            less than this limit. If `None`, use all scales.
+        """
+        if scale_upper_limit is None:
+            scales = self.scales
+        else:
+            scales = [s for s in self.scales if s < scale_upper_limit]
+        assert len(scales) > 0
         dset, spw = self.dset, self.spw
         # Book-keeping before run
         imagename = self.nomask_imagebase
@@ -938,7 +962,7 @@ class ImageConfig:
             perchanweightdensity=PERCHANWT,
             # deconvolver parameters
             deconvolver='multiscale',
-            scales=self.scales,
+            scales=scales,
             smallscalebias=self.smallscalebias,
             gain=self.gain,
             cyclefactor=self.cyclefactor,
@@ -959,9 +983,9 @@ class ImageConfig:
             log_post('-- Has the unmasked call to tclean been run?')
             raise IOError
         make_multiscale_joint_mask(imagename, sigma=sigma,
-                scales=self.mask_scales)
+                mask_ang_scales=self.mask_ang_scales)
 
-    def clean_line(self, mask_method='auto-multithresh', sigma=2,
+    def clean_line(self, mask_method='seed+multithresh', sigma=2,
             ext=None):
         """
         Primary interface for calling `tclean` to deconvolve spectral windows.
@@ -1055,7 +1079,7 @@ class ImageConfig:
         self.make_dirty_cube()
         self.clean_line_nomask(sigma=4.5)
         self.make_seed_mask(sigma=5.0)
-        self.clean_line(make_method='seed+multithresh', ext='clean')
+        self.clean_line(mask_method='seed+multithresh', ext='clean')
         imagebase = self.get_imagebase(ext='clean')
         check_max_residual(imagebase, sigma=5.0)
         primary_beam_correct(imagebase)
