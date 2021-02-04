@@ -1095,14 +1095,14 @@ class ImageConfig:
         imagebase = self.get_imagebase(ext=ext)
         check_max_residual(imagebase, sigma=5.0)
         primary_beam_correct(imagebase)
-        for ext in ('.image', '.image.pbcor'):
-            im_name = imagebase + ext
-            pb_name = imagebase + '.pb'
-            cm_name = im_name   + '.common'
-            smooth_cube_to_common_beam(im_name)
-            copy_pb_mask(cm_name, pb_name)
-            if make_fits:
-                export_fits(cm_name)
+        # smooth to common beam and export to FITS
+        im_name = imagebase + '.image.pbcor'
+        pb_name = imagebase + '.pb'
+        cm_name = im_name   + '.common'
+        smooth_cube_to_common_beam(im_name)
+        copy_pb_mask(cm_name, pb_name)
+        if make_fits:
+            export_fits(cm_name)
 
     def run_pipeline(self, ext='clean'):
         self.make_dirty_cube()
