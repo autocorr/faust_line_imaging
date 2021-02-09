@@ -239,19 +239,23 @@ def ms_contains_diameter(ms_filen, diameter=None, epsilon=0.5):
 class Spw(object):
     line_vwin = '20km/s'
 
-    def __init__(self, setup, mol_name, name, restfreq, spw_id, ot_name, nchan, chan_width,
+    def __init__(self, setup, restfreq, mol_name, name, ms_restfreq, spw_id, ot_name, nchan, chan_width,
             tot_bw):
         """
         Parameters
         ----------
         setup : int
             Setup ID number (1, 2, 3)
-        mol_name : str
-            Short name based on the primary observed molecule in the SPW.
-        name : str
-            Name of the spectral line
         restfreq : str
-            Line rest frequency, e.g. "93.17GHz"
+            Rest frequency of primary targeted line in the SPW, e.g. "93.17GHz".
+        mol_name : str
+            Molecule name of the primary targeted line in the SPW.
+        name : str
+            Name of the spectral line.
+        ms_restfreq : str
+            Line rest frequency listed in the measurement set, e.g. "93.17GHz".
+            Many of these values are not rest frequencies for specific molecular
+            transitions but shifted values meant to center the bandpass.
         spw_id : int
             ID number of the spectral window
         ot_name : str
@@ -267,9 +271,10 @@ class Spw(object):
         """
         assert setup in (1, 2, 3)
         self.setup = setup
+        self.restfreq = restfreq
         self.mol_name = mol_name
         self.name = name
-        self.restfreq = restfreq
+        self.ms_restfreq = ms_restfreq
         self.spw_id = spw_id
         self.ot_name = ot_name
         self.nchan = nchan
@@ -349,49 +354,50 @@ def spw_list_to_dict(spws):
 #      from each MS based on the "BB" name.
 # SPWs for Setup 1 (Band 6 "a", 220 GHz)
 SPW_S1 = spw_list_to_dict([
-    Spw(1, 'DCOp', 'DCO__v_0_J_3_2__HCOOCH3_19_2_18__18_2_17__A(ID=0)', '2.16112582e+11Hz', 25, 'BB_1#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'NH2D', 'NH2D_3_2_2_0s_3_1_2_0a__CH3CHO_v_t_0_11_1_10__10_1_9___E(ID=0)', '2.16562716e+11Hz', 27, 'BB_1#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'SiO', 'SiO_v_0_5_4(ID=0)', '2.17104919e+11Hz', 29, 'BB_1#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'c-C3H2', 'c_C3H2_v_0_6_0_6__5_1_5___6_1_6__5_0_5_(ID=0)', '2.17822148e+11Hz', 31, 'BB_1#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'H2CO', 'H2CO_3_0_3__2_0_2_(ID=0)', '2.18222192e+11Hz', 33, 'BB_2#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'CH3OH', 'CH3OH_v_t_0_4_2_2__3_1_2___NH2CHO_10_1_9__9_1_8___H2CO_3_2_2__2_2_1_(ID=0)', '2.18440063e+11Hz', 35, 'BB_2#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'C18O', 'C18O_2_1(ID=0)', '2.19560354e+11Hz', 37, 'BB_2#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'SO', 'SO_3__v_0_6_5__5_4_(ID=0)', '2.19949442e+11Hz', 39, 'BB_2#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'OCS', 'OCS_19_18(ID=0)', '2.31060993e+11Hz', 41, 'BB_3#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, '13CS', '13CS_v_0_5_4(ID=0)', '2.31220685e+11Hz', 43, 'BB_3#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'N2Dp', 'DN2__J_3_2__CH3CHO_4_lines(ID=0)', '2.313218283e+11Hz', 45, 'BB_3#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'D2CO', 'D2CO_4_0_4__3_0_3___CH3CHO_12_5_8__11_5_7__E(ID=0)', '2.31410234e+11Hz', 47, 'BB_3#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(1, 'cont', 'continuum(ID=0)', '2.3379575e+11Hz', 49, 'BB_4#SW-01#FULL_RES', 3840, 976562.5, 1875000000.0),
+    Spw(1, '216.112580GHz', 'DCOp', 'DCO__v_0_J_3_2__HCOOCH3_19_2_18__18_2_17__A(ID=0)', '2.16112582e+11Hz', 25, 'BB_1#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '216.562710GHz', 'NH2D', 'NH2D_3_2_2_0s_3_1_2_0a__CH3CHO_v_t_0_11_1_10__10_1_9___E(ID=0)', '2.16562716e+11Hz', 27, 'BB_1#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '217.104980GHz', 'SiO', 'SiO_v_0_5_4(ID=0)', '2.17104919e+11Hz', 29, 'BB_1#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '217.822150GHz', 'c-C3H2', 'c_C3H2_v_0_6_0_6__5_1_5___6_1_6__5_0_5_(ID=0)', '2.17822148e+11Hz', 31, 'BB_1#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '218.222190GHz', 'H2CO', 'H2CO_3_0_3__2_0_2_(ID=0)', '2.18222192e+11Hz', 33, 'BB_2#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '218.440050GHz', 'CH3OH', 'CH3OH_v_t_0_4_2_2__3_1_2___NH2CHO_10_1_9__9_1_8___H2CO_3_2_2__2_2_1_(ID=0)', '2.18440063e+11Hz', 35, 'BB_2#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '219.560358GHz', 'C18O', 'C18O_2_1(ID=0)', '2.19560354e+11Hz', 37, 'BB_2#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '219.949442GHz', 'SO', 'SO_3__v_0_6_5__5_4_(ID=0)', '2.19949442e+11Hz', 39, 'BB_2#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '231.060983GHz', 'OCS', 'OCS_19_18(ID=0)', '2.31060993e+11Hz', 41, 'BB_3#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '231.220686GHz', '13CS', '13CS_v_0_5_4(ID=0)', '2.31220685e+11Hz', 43, 'BB_3#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '231.321828GHz', 'N2Dp', 'DN2__J_3_2__CH3CHO_4_lines(ID=0)', '2.313218283e+11Hz', 45, 'BB_3#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '231.410234GHz', 'D2CO', 'D2CO_4_0_4__3_0_3___CH3CHO_12_5_8__11_5_7__E(ID=0)', '2.31410234e+11Hz', 47, 'BB_3#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(1, '233.795750GHz', 'cont', 'continuum(ID=0)', '2.3379575e+11Hz', 49, 'BB_4#SW-01#FULL_RES', 3840, 976562.5, 1875000000.0),
 ])
 
 # SPWs for Setup 2 (Band 6 "b", 260 GHz)
 SPW_S2 = spw_list_to_dict([
-    Spw(2, 'CH3OH', 'CH3OH_v_t_0_5_1_4__4_1_3____(ID=0)', '2.43915788e+11Hz', 25, 'BB_1#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'H2CS', 'H2CS_7_1_6__6_1_5_(ID=0)', '2.44048504e+11Hz', 27, 'BB_1#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'CS', 'CS_v_0_5_4(ID=0)', '2.44935557e+11Hz', 29, 'BB_1#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'HC3N', 'HC3N_v_0_J_27_26__SO2_10_3_7__10_2_8_(ID=0)', '2.4560632e+11Hz', 31, 'BB_1#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'cont', 'continuum(ID=0)', '2.467e+11Hz', 33, 'BB_2#SW-01#FULL_RES', 1920, 1128906.25, 1875000000.0),
-    Spw(2, 'NH2CHO', 'NH2CHO_12_2_10__11_2_9_(ID=0)', '2.60189848e+11Hz', 35, 'BB_3#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'H13COp', 'HCOOCH3_21_3_18__20_3_17_E__A__H13CO__J_3_2(ID=0)', '2.6025508e+11Hz', 37, 'BB_3#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'CH2DOH', 'CH2DOH_5_2_4__5_1_5___e0__HCOOCH3_21_7_14__20_7_13__E(ID=0)', '2.61692e+11Hz', 39, 'BB_3#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'CCH', 'CCH_v_0_N_3_2__J_7_2_5_2__F_4_3__3_2(ID=0)', '2.6200426e+11Hz', 41, 'BB_3#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'CH2DOH', 'CH2DOH_4_2_3__3_1_3___e1(ID=0)', '2.578956727e+11Hz', 43, 'BB_4#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'SO', 'SO_3__v_0_6_6__5_5_(ID=0)', '2.582558259e+11Hz', 45, 'BB_4#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'CH3OCH3', 'CH3OCH3_14_1_14__13_0_13__AE__EA__EE__AA(ID=0)', '2.58548819e+11Hz', 47, 'BB_4#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
-    Spw(2, 'HDCO', 'HDCO_4_2_2__3_2_1_(ID=0)', '2.5903491e+11Hz', 49, 'BB_4#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '243.915826GHz', 'CH3OH', 'CH3OH_v_t_0_5_1_4__4_1_3____(ID=0)', '2.43915788e+11Hz', 25, 'BB_1#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '244.048592GHz', 'H2CS', 'H2CS_7_1_6__6_1_5_(ID=0)', '2.44048504e+11Hz', 27, 'BB_1#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '244.935560GHz', 'CS', 'CS_v_0_5_4(ID=0)', '2.44935557e+11Hz', 29, 'BB_1#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '245.606320GHz', 'HC3N', 'HC3N_v_0_J_27_26__SO2_10_3_7__10_2_8_(ID=0)', '2.4560632e+11Hz', 31, 'BB_1#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '246.700000GHz', 'cont', 'continuum(ID=0)', '2.467e+11Hz', 33, 'BB_2#SW-01#FULL_RES', 1920, 1128906.25, 1875000000.0),
+    Spw(2, '260.189080GHz', 'NH2CHO', 'NH2CHO_12_2_10__11_2_9_(ID=0)', '2.60189848e+11Hz', 35, 'BB_3#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '260.255080GHz', 'H13COp', 'HCOOCH3_21_3_18__20_3_17_E__A__H13CO__J_3_2(ID=0)', '2.6025508e+11Hz', 37, 'BB_3#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '261.687366GHz', 'CH2DOH', 'CH2DOH_5_2_4__5_1_5___e0__HCOOCH3_21_7_14__20_7_13__E(ID=0)', '2.61692e+11Hz', 39, 'BB_3#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '262.004260GHz', 'CCH', 'CCH_v_0_N_3_2__J_7_2_5_2__F_4_3__3_2(ID=0)', '2.6200426e+11Hz', 41, 'BB_3#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '257.895673GHz', 'CH2DOH', 'CH2DOH_4_2_3__3_1_3___e1(ID=0)', '2.578956727e+11Hz', 43, 'BB_4#SW-01#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '258.255826GHz', 'SO', 'SO_3__v_0_6_6__5_5_(ID=0)', '2.582558259e+11Hz', 45, 'BB_4#SW-02#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '258.548819GHz', 'CH3OCH3', 'CH3OCH3_14_1_14__13_0_13__AE__EA__EE__AA(ID=0)', '2.58548819e+11Hz', 47, 'BB_4#SW-03#FULL_RES', 480, 141113.28125, 58593750.0),
+    Spw(2, '259.034910GHz', 'HDCO', 'HDCO_4_2_2__3_2_1_(ID=0)', '2.5903491e+11Hz', 49, 'BB_4#SW-04#FULL_RES', 480, 141113.28125, 58593750.0),
 ])
 
 # SPWs for Setup 3 (Band 3 "a", 90 GHz)
 SPW_S3 = spw_list_to_dict([
-    Spw(3, 'N2Hp', 'N2H__v_0_J_1_0(ID=3925982)', '93180900000.0Hz', 25, 'BB_1#SW-01#FULL_RES', 960, 70556.640625, 58593750.0),
-    Spw(3, '13CH3OH', '13CH3OH_v_t_0_2__1_2__1__1_1___2_0_2__1_0_1______2__0_2__1__0_1___2__1_1__1__1_0_(ID=0)', '94407129000.0Hz', 27, 'BB_1#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
-    Spw(3, 'cont', 'Continuum(ID=0)', '94999908103.2Hz', 29, 'BB_2#SW-01#FULL_RES', 3840, 976562.5, 1875000000.0),
-    Spw(3, 'CH3OH', 'CH3OH_v_t_0_3_1_3__4_0_4____(ID=0)', '1.07013831e+11Hz', 31, 'BB_3#SW-01#FULL_RES', 960, 70556.640625, 58593750.0),
-    Spw(3, 'l-C3D', 'C3D_11_2_9_2_f__c_C3HD_5_5_1__5_4_2_(ID=0)', '1.08064e+11Hz', 33, 'BB_3#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
-    Spw(3, 'SO2', 'SO2_v_0_10_1_9__10_0_10_(ID=96928)', '1.042392952e+11Hz', 35, 'BB_4#SW-01#FULL_RES', 960, 70556.640625, 58593750.0),
-    Spw(3, 'H13CCCN', 'H13CCCN_J_12_11(ID=455557)', '1.05799113e+11Hz', 37, 'BB_4#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
+    Spw(3,  '93.180900GHz', 'N2Hp', 'N2H__v_0_J_1_0(ID=3925982)', '93180900000.0Hz', 25, 'BB_1#SW-01#FULL_RES', 960, 70556.640625, 58593750.0),
+    Spw(3,  '94.405163GHz', '13CH3OH', '13CH3OH_v_t_0_2__1_2__1__1_1___2_0_2__1_0_1______2__0_2__1__0_1___2__1_1__1__1_0_(ID=0)', '94407129000.0Hz', 27, 'BB_1#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
+    Spw(3,  '94.999908GHz', 'cont', 'Continuum(ID=0)', '94999908103.2Hz', 29, 'BB_2#SW-01#FULL_RES', 3840, 976562.5, 1875000000.0),
+    Spw(3, '107.013803GHz', 'CH3OH', 'CH3OH_v_t_0_3_1_3__4_0_4____(ID=0)', '1.07013831e+11Hz', 31, 'BB_3#SW-01#FULL_RES', 960, 70556.640625, 58593750.0),
+    Spw(3, '108.039986GHz', 'l-C3D', 'C3D_11_2_9_2_f__c_C3HD_5_5_1__5_4_2_(ID=0)', '1.08064e+11Hz', 33, 'BB_3#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
+    Spw(3, '104.239295GHz', 'SO2', 'SO2_v_0_10_1_9__10_0_10_(ID=96928)', '1.042392952e+11Hz', 35, 'BB_4#SW-01#FULL_RES', 960, 70556.640625, 58593750.0),
+    Spw(3, '105.799113GHz', 'H13CCCN', 'H13CCCN_J_12_11(ID=455557)', '1.05799113e+11Hz', 37, 'BB_4#SW-02#FULL_RES', 960, 70556.640625, 58593750.0),
 ])
 
+ALL_SETUPS = (1, 2, 3)
 SPWS_BY_SETUP = {1: SPW_S1, 2: SPW_S2, 3: SPW_S3}
 ALL_SPWS = {}
 ALL_SPWS.update(SPW_S1)
@@ -737,7 +743,7 @@ def format_rms(rms, sigma=1, unit='Jy'):
     return '{0}{1}'.format(sigma*rms, unit)
 
 
-def check_max_residual(imagebase, sigma=5):
+def check_max_residual(imagebase, sigma=5.5):
     """
     Check the residual image cube for channels with deviations higher than a
     multiple of the global RMS.
@@ -1177,6 +1183,36 @@ def test_perchanwt():
     # reset back to global defaults
     PERCHANWT = True
     DIRTY_EXT = 'dirty'
+
+
+def test_rename_oldfiles(field, kind='joint', weighting=0.5):
+    log_post(':: Renaming final products from old frequency convention')
+    for setup in ALL_SETUPS:
+        for spw in SPWS_BY_SETUP[setup].values():
+            # setup new config instance and calculate frequencies
+            dset = DataSet(field, setup=setup, kind=kind)
+            config = ImageConfig(dset, spw, weighting=weighting)
+            new_base = config.get_imagebase(ext='clean')
+            old_freq = '{0:.3f}GHz'.format(qa.convert(spw.ms_restfreq, 'GHz')['value'])
+            old_base = 'images/{0}/{0}_{1}_{2}_{3}_{4}_clean'.format(
+                    config.dset.field, old_freq, spw.mol_name, kind, weighting,
+            )
+            old_name = '{0}.image.common'.format(old_base)
+            new_name = '{0}.image.common'.format(new_base)
+            if not os.path.exists(old_name):
+                log_post('-- File not found, continuing: {0}'.format(old_name))
+                continue
+            # edit header rest frequency value
+            restfreq_quantity = qa.quantity(spw.restfreq)  # in GHz
+            restfreq_quantity = qa.convert(restfreq_quantity, 'Hz')
+            log_post('-- Converting frequency for: {0}'.format(old_name))
+            success = imhead(old_name, mode='put', hdkey='restfreq',
+                    hdvalue=restfreq_quantity)
+            if not success:
+                raise RuntimeError('-- Failed to modify header of: {0}'.format(old_name))
+            # re-export FITS file
+            export_fits(old_name)
+            shutil.move(old_name+'.fits', new_name+'.fits')
 
 
 ###############################################################################
