@@ -24,9 +24,17 @@ from collections import (OrderedDict, Iterable)
 
 import numpy as np
 import scipy as sp
+from matplotlib import pyplot as plt
+from matplotlib import patheffects as path_effects
 
 from cleanhelper import cleanhelper
 
+
+# matplotlib configuration settings
+plt.rc('font', size=10, family='serif')
+plt.rc('xtick', direction='in')
+plt.rc('ytick', direction='in')
+plt.ioff()  # turn off interactive GUI
 
 # Global paths
 DATA_DIR = '/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs/'
@@ -775,7 +783,7 @@ def check_max_residual(imagebase, sigma=5.5):
 # Line imaging
 ###############################################################################
 
-class ImageConfig:
+class ImageConfig(object):
     scales = [0, 15, 45, 135]  # pixels; point, 1.5, 4.5 beam hpbw's (10 pix)
     mask_ang_scales = [0, 1, 3]  # arcsec
     smallscalebias = -1.0
@@ -1133,7 +1141,8 @@ def postproc_all_cleaned_images(dset):
         postproc_image_to_common(imagename)
 
 
-def run_pipeline(field, setup=None, weightings=None, fullcube=True):
+def run_pipeline(field, setup=None, weightings=None, fullcube=True,
+        do_cont=True):
     """
     Run all pipeline tasks over all setups, spectral windows, and
     uv-weightings.
@@ -1141,20 +1150,25 @@ def run_pipeline(field, setup=None, weightings=None, fullcube=True):
     Parameters
     ----------
     field : str
-    setup : int, None
+    setup : (int, None)
         Setup number, if `None` run on all setups in sequence.
     weightings : Iterable, default (0.5,)
         List of uv-weightings to use in `tclean`, which may include the string
         "natural" or a number for the briggs robust parameter.
-    fullcube : bool
+    fullcube : bool, default True
         Image the full spectral window or a small window around the SPWs
         defined rest frequency.
+    do_cont : bool, default True
+        Whether to image the continuum SPWs or not. 
     """
     weightings = WEIGHTINGS if weightings is None else weightings
     run_setups = (1, 2, 3) if setup is None else [setup]
     for i_setup in run_setups:
         dset = DataSet(field, setup=i_setup, kind='joint')
         for spw in SPWS_BY_SETUP[i_setup].values():
+            if not do_cont:
+                if spw.mol_name == 'cont':
+                    continue
             log_post(':: Imaging Setup-{0} {1}'.format(setup, spw.label))
             for weighting in weightings:
                 config = ImageConfig(dset, spw, fullcube=fullcube, weighting=weighting)
@@ -1185,34 +1199,208 @@ def test_perchanwt():
     DIRTY_EXT = 'dirty'
 
 
-def test_rename_oldfiles(field, kind='joint', weighting=0.5):
+def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
+    """
+    Replace the rest frequency in each final image cube with the value
+    given by Satoshi and then re-export the FITS cube.
+
+    Parameters
+    ----------
+    field : str
+        Field name, e.g., "CB68"
+    label : (str, None)
+        SPW label, e.g., "216.113GHz_DCOp". If `None` then apply to all
+        Setups and SPWs for target field.
+    kind : str
+    weighting : (str, number)
+    """
     log_post(':: Renaming final products from old frequency convention')
-    for setup in ALL_SETUPS:
-        for spw in SPWS_BY_SETUP[setup].values():
-            # setup new config instance and calculate frequencies
-            dset = DataSet(field, setup=setup, kind=kind)
-            config = ImageConfig(dset, spw, weighting=weighting)
-            new_base = config.get_imagebase(ext='clean')
-            old_freq = '{0:.3f}GHz'.format(qa.convert(spw.ms_restfreq, 'GHz')['value'])
-            old_base = 'images/{0}/{0}_{1}_{2}_{3}_{4}_clean'.format(
-                    config.dset.field, old_freq, spw.mol_name, kind, weighting,
-            )
-            old_name = '{0}.image.common'.format(old_base)
-            new_name = '{0}.image.common'.format(new_base)
-            if not os.path.exists(old_name):
-                log_post('-- File not found, continuing: {0}'.format(old_name))
-                continue
-            # edit header rest frequency value
-            restfreq_quantity = qa.quantity(spw.restfreq)  # in GHz
-            restfreq_quantity = qa.convert(restfreq_quantity, 'Hz')
-            log_post('-- Converting frequency for: {0}'.format(old_name))
-            success = imhead(old_name, mode='put', hdkey='restfreq',
-                    hdvalue=restfreq_quantity)
-            if not success:
-                raise RuntimeError('-- Failed to modify header of: {0}'.format(old_name))
-            # re-export FITS file
-            export_fits(old_name)
-            shutil.move(old_name+'.fits', new_name+'.fits')
+    if label is not None:
+        spw_list = [ALL_SPWS[label]]
+    else:
+        spw_list = ALL_SPWS.values()
+    for spw in spw_list:
+        # setup new config instance and calculate frequencies
+        dset = DataSet(field, setup=spw.setup, kind=kind)
+        config = ImageConfig(dset, spw, weighting=weighting)
+        new_base = config.get_imagebase(ext='clean')
+        old_freq = '{0:.3f}GHz'.format(qa.convert(spw.ms_restfreq, 'GHz')['value'])
+        old_base = 'images/{0}/{0}_{1}_{2}_{3}_{4}_clean'.format(
+                config.dset.field, old_freq, spw.mol_name, kind, weighting,
+        )
+        old_name = '{0}.image.pbcor.common'.format(old_base)
+        new_name = '{0}.image.pbcor.common'.format(new_base)
+        if not os.path.exists(old_name):
+            log_post('-- File not found, continuing: {0}'.format(old_name))
+            continue
+        # edit header rest frequency value
+        restfreq_quantity = qa.quantity(spw.restfreq)  # in GHz
+        restfreq_quantity = qa.convert(restfreq_quantity, 'Hz')
+        log_post('-- Converting frequency for: {0}'.format(old_name))
+        log_post('-- nu_old: {0:.12e}, nu_new: {1:.12e}'.format(
+            float(spw.ms_restfreq.rstrip('Hz')),
+            restfreq_quantity['value'],
+        ))
+        success = imhead(old_name, mode='put', hdkey='restfreq',
+                hdvalue=restfreq_quantity)
+        if not success:
+            raise RuntimeError('-- Failed to modify header of: {0}'.format(old_name))
+        # re-export FITS file
+        export_fits(old_name)
+        shutil.move(old_name+'.fits', new_name+'.fits')
+
+
+###############################################################################
+# Quality assurance plots
+###############################################################################
+
+def savefig(filen, dpi=300):
+    for ext in ('png', 'pdf'):
+        outfilen = os.path.join(PLOT_DIR, '{0}.{1}'.format(filen, ext))
+        plt.savefig(outfilen, dpi=dpi)
+    log_post('-- figure saved for: {0}'.format(filen))
+    plt.close('all')
+
+
+class CubeSet(object):
+    def __init__(self, path, sigma=6):
+        self.path = path
+        self.sigma = sigma
+        # Read in images and calculate noise
+        stem = os.path.splitext(path)[0]
+        self.stem = stem
+        log_post('-- Reading image')
+        self.image = self.get_chunk(stem+'.image')
+        log_post('-- Reading residual')
+        self.residual = self.get_chunk(stem+'.residual')
+        log_post('-- Reading mask')
+        self.mask = self.get_chunk(stem+'.mask')
+        log_post('-- Reading primary beam')
+        self.pb = self.get_chunk(stem+'.pb')
+        self.shape = self.image.shape
+        self.pix_width = self.shape[1]  # square images
+        # calculate coordinate offset positions for ticks
+        self.header = imhead(path, mode='list')
+        self.pix_scale = abs(np.rad2deg(self.header['cdelt1']) * 60**2)  # arcsec
+        # mask images on pb profile
+        pb_mask = self.pb[0] < 0.2
+        self.image[:,pb_mask] = np.nan
+        self.residual[:,pb_mask] = np.nan
+        # calculate noise
+        self.rms = np.nanstd(self.image[:30])
+        self.nchan = self.image.shape[0]
+        # Identify channels with significant emisssion
+        cut = self.image > sigma * self.rms
+        self.good_mask = np.nansum(cut, axis=(1, 2)) > 0
+        self.good_chan = np.argwhere(self.good_mask).flatten()
+        self.ngood = self.good_chan.size
+
+    @staticmethod
+    def get_chunk(imagename):
+        ia.open(imagename)
+        # drop (degenerate) stokes axis
+        chunk = ia.getchunk(dropdeg=True)
+        ia.close()
+        return chunk.transpose()
+
+    def iter_planes(self):
+        for ix in self.good_chan:
+            im = self.image[ix]
+            rs = self.residual[ix]
+            ma = self.mask[ix]
+            pb = self.pb[ix]
+            yield im, rs, ma, pb, ix
+
+    def calc_tick_loc(self, ang_tick=5):
+        """
+        Parameters
+        ----------
+        ang_tick : number
+            Tick interval in arcsec.
+        """
+        ang_width = self.pix_scale * self.pix_width
+        n_ticks = int(ang_width // ang_tick)
+        n_ticks += 1 if n_ticks % 2 != 0 else 0
+        pix_tick = ang_tick / self.pix_scale
+        return np.arange(-n_ticks/2., n_ticks/2.+1) * pix_tick + self.pix_width / 2
+
+
+def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
+    """
+    Parameters
+    ----------
+    cset : CubeSet
+    kind : str
+        Kind of image data to plot:
+            'image' : restored/cleaned image
+            'residual' : residual image
+    outfilen : str
+    """
+    log_post(':: Making QA plots for: {0}'.format(cset.stem))
+    # configuration options specific to image or residual plots
+    if kind == 'image':
+        cmap = plt.cm.afmhot if kind == 'image' else plt.cm.RdBu
+        mask_cont_color = 'cyan'
+        vmin, vmax = None, None
+    elif kind == 'residual':
+        cmap = plt.cm.RdBu
+        mask_cont_color = 'black'
+        vmin, vmax = -5 * cset.rms, 5 * cset.rms
+    else:
+        raise ValueError('Invalid plot kind: "{0}"'.format(kind))
+    # plot configuration options
+    ncols = 5
+    subplot_size = 1.3  # inch, good for five across on a 8.5x11 page
+    # set NaN color for colormap, '0.2' for darker gray
+    cmap.set_bad('0.5', 1.0)
+    # determine the number of channels that need to be plotted
+    nrows = cset.ngood // ncols + 1
+    nempty = ncols - cset.ngood % ncols
+    tick_pos = cset.calc_tick_loc(ang_tick=5)
+    figsize = (ncols * subplot_size, nrows * subplot_size)
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex=True,
+            sharey=True, figsize=figsize)
+    for ax, planes in zip(axes.flat, cset.iter_planes()):
+        image, residual, mask, pbeam, chan_ix = planes
+        data = image if kind == 'image' else residual
+        # show colorscale of image data
+        ax.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+        # show HPBW contour for primary beam data
+        ax.contour(pbeam, levels=[0.5], colors=['0.5'],
+                linestyles=['dashed'], linewidths=[0.4])
+        # show contour for the clean mask
+        if mask.any() > 0:
+            ax.contour(mask, level=[0.5], colors=[mask_cont_color],
+                    linestyles=['solid'], linewidths=[0.2])
+        # show nice channel label in the top-right corner
+        text = ax.annotate(str(chan_ix), (0.83, 0.91),
+                xycoords='axes fraction', fontsize='xx-small')
+        text.set_path_effects([
+                path_effects.withStroke(linewidth=2, foreground='white')])
+        # FIXME
+        # show axis ticks get relative offsets in arcsec
+        ax.set_xticks(tick_pos)
+        ax.set_yticks(tick_pos)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+    # zoom the window to crop out some of the PB NaNs around the edges
+    ax.set_xlim(0.12*cset.pix_width, 0.88*cset.pix_width)
+    ax.set_ylim(0.12*cset.pix_width, 0.88*cset.pix_width)
+    plt.tight_layout(pad=0.8)
+    # Hide unused plots
+    for ax in axes.flat[-nempty:]:
+        ax.set_visible(False)
+    outfilen_ext = '{0}_{1}'.format(outfilen, kind)
+    savefig(outfilen_ext)
+
+
+def make_all_qa_plots(field, ext='clean'):
+    image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
+    for path in image_paths:
+        cset = CubeSet(path)
+        outfilen = '{0}_qa_plot'.format(cset.stem)
+        make_qa_plot(cset, kind='image', outfilen=outfilen)
+        make_qa_plot(cset, kind='residual', outfilen=outfilen)
 
 
 ###############################################################################
