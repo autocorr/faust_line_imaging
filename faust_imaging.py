@@ -1,18 +1,23 @@
 #!/usr/bin/env python
 """
-===================
-ALMA FAUST Pipeline
-===================
-Line imaging pipeline for the ALMA FAUST Large Program. Please see the README
-file for further documentation.
+=======================
+FAUST Archival Pipeline
+=======================
+This module contains the implementation for the CASA spectral line imaging
+pipeline for the archival products of the ALMA Large Program FAUST. Please
+see the README file for further information and the documentation, which
+may be found under the `docs/` directory or online at:
+    https://faust-imaging.readthedocs.io
 
-NOTE: To use this script within an interactive session of CASA (Python v2), run
-with `execfile`.
+This script is to be run under CASA v5.6 and Python v2.7. To use the script
+interactively, execute the module by running at the CASA IPython prompt:
+``execfile('<PATH>/<TO>/faust_imaging.py')``.
 
-Author:`Brian Svoboda`
-Contributors:`Claire Chandler`
-License:MIT
-Year:2020
+Authors
+-------
+Brian Svoboda and Claire Chandler.
+
+Copyright 2020, 2021 Brian Svoboda under the MIT License.
 """
 from __future__ import (print_function, division)
 
@@ -25,16 +30,27 @@ from copy import deepcopy
 from collections import (OrderedDict, Iterable)
 
 import numpy as np
-import scipy as sp
+from scipy import special
 from matplotlib import pyplot as plt
 from matplotlib import patheffects as path_effects
 
+# This script is meant to be run under Python v2.7 in CASA v5.6. However,
+# the documentation is generated using Sphinx and Python v3. In order for this
+# script to execute its module level scope without crashing, a few global tasks
+# in CASA must be mocked. Full CASA v5/v6 compatibility could be implemented if
+# the user has CASA v6 installed with modules `casatasks` and `casatools`.
 if sys.version_info < (3, 0, 0):
-    # This module is only available within CASA. CASA v5.6 runs under Python 2,
-    # but the documentation is generated using Python 3 and the user's system
-    # Python distribution. The rest of the script should be v3 compatible
-    # for executing the module level scope, except for this import.
+    # The script is run under CASA 5.6 Python 2.
     from cleanhelper import cleanhelper
+else:
+    # The script is run under a users Python v3 installation. This is only used
+    # for generating the documentation.
+    class Mock:
+        is_mpi_enabled = True
+        def convert(self, x, y):
+            return {'unit': 'null', 'value': 1}
+    qa = Mock()
+    MPIEnvironment = Mock
 
 
 # matplotlib configuration settings
@@ -51,7 +67,7 @@ MOMA_DIR = os.path.join(PROD_DIR, 'moments/')
 PLOT_DIR = os.path.join(PROD_DIR, 'plots/')
 
 # Median-absolute-deviation conversion factor to Gaussian RMS
-MAD_TO_RMS = 1 / (np.sqrt(2) * sp.special.erfinv(0.5))  # approx. 1.4826
+MAD_TO_RMS = 1 / (np.sqrt(2) * special.erfinv(0.5))  # approx. 1.4826
 # Large `niter` value, hopefully not reached in actually executions.
 NITERMAX = int(1e7)
 # Primary beam limit to image down to. Values in the image are mainly dominated
@@ -715,7 +731,7 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3),
     overwrite : bool
         Whether to overwrite the smoothed mask files if they exist.
 
-    Results
+    Returns
     -------
         Files are written for each smoothing scale:
             smoothed image: '<IMG>_smooth{.3f}.image' (excluding scale=0)
@@ -1103,12 +1119,16 @@ class ImageConfig(object):
         Parameters
         ----------
         mask_method : str
-            Masking method to use in the deconvolution process. Available methods:
-                'auto-multithresh' -- use auto-multithresh automated masking
-                'seed+multithresh' -- generate initial mask from free clean
-                    and then use auto-multithresh for automatic masking.
-                'taper' -- use mask generated from a separate tapered run;
-                    requires re-implementation.
+            Masking method to use in the deconvolution process. Available methods
+
+                ``"auto-multithresh"`` use auto-multithresh automated masking.
+
+                ``"seed+multithresh"`` generate initial mask from free clean
+                and then use auto-multithresh for automatic masking.
+
+                ``"taper"`` use mask generated from a separate tapered run;
+                requires re-implementation.
+
         sigma : number
             Threshold in standard deviations of the noise to clean down to within
             the clean-mask. An absolute RMS is calculated from off-line channels in
@@ -1229,8 +1249,11 @@ class ImageConfig(object):
         Run all pipeline tasks with default parameters. Custom recipes should
         call the individual methods in sequence. The final pipeline product
         will be named of the form:
+
             "<FILENAME>_<EXT>.image.pbcor.common.fits"
-        or if `ext=None`:
+
+        or if ``ext=None``:
+
             "<FILENAME>.image.pbcor.common.fits"
 
         Parameters
@@ -1457,8 +1480,11 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     cset : CubeSet
     kind : str
         Kind of image data to plot:
+
             'image' : restored/cleaned image
+
             'residual' : residual image
+
     outfilen : str
     """
     log_post(':: Making QA plots for: {0}'.format(cset.stem))
