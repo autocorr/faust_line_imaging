@@ -17,9 +17,11 @@ Year:2020
 from __future__ import (print_function, division)
 
 import os
+import sys
 import shutil
 import datetime
 from glob import glob
+from copy import deepcopy
 from collections import (OrderedDict, Iterable)
 
 import numpy as np
@@ -27,7 +29,12 @@ import scipy as sp
 from matplotlib import pyplot as plt
 from matplotlib import patheffects as path_effects
 
-from cleanhelper import cleanhelper
+if sys.version_info < (3, 0, 0):
+    # This module is only available within CASA. CASA v5.6 runs under Python 2,
+    # but the documentation is generated using Python 3 and the user's system
+    # Python distribution. The rest of the script should be v3 compatible
+    # for executing the module level scope, except for this import.
+    from cleanhelper import cleanhelper
 
 
 # matplotlib configuration settings
@@ -68,6 +75,9 @@ NOMSK_EXT = 'nomask'
 PERCHANWT = False
 # See guide for discussion for of automasking parameters:
 #   https://casaguides.nrao.edu/index.php/Automasking_Guide
+# These parameters have been tested to provide results that are
+# frequently acceptable and are an overall compromise in masking compact
+# and extended emission.
 AUTOM_KWARGS = {
         'usemask': 'auto-multithresh',
         'noisethreshold': 5.0,
@@ -75,6 +85,19 @@ AUTOM_KWARGS = {
         'lownoisethreshold': 1.0,
         'minbeamfrac': 0.001,
         'negativethreshold': 5.0,
+        'growiterations': 1000,
+        'dogrowprune': False,
+        'fastnoise': False,
+        'verbose': True,
+}
+# Default 7m values taken from the auto-masking CASA Guide above. Un-tested.
+AUTOM_7M_KWARGS = {
+        'usemask': 'auto-multithresh',
+        'noisethreshold': 5.0,
+        'sidelobethreshold': 1.25,
+        'lownoisethreshold': 2.0,
+        'minbeamfrac': 0.1,
+        'negativethreshold': 10.0,
         'growiterations': 1000,
         'dogrowprune': False,
         'fastnoise': False,
@@ -510,8 +533,8 @@ def replace_existing_file_with_new(old_filen, new_filen):
     if not os.path.exists(new_filen):
         raise IOError('File does not exist: "{0}"'.format(new_filen))
     rmtables(old_filen)
-    # If a parallel/virtual image, then will not be recognized as a table in
-    # the call to `rmtables`
+    # If a parallel image, then will not be recognized as a table in the call
+    # to `rmtables`
     if os.path.exists(old_filen):
         log_post('-- Hard delete! "{0}"'.format(old_filen))
         shutil.rmtree(old_filen)
@@ -526,8 +549,9 @@ def export_fits(imagename, velocity=False, overwrite=True):
 
 def concat_parallel_image(imagename):
     """
-    Create a contiguous image cube file from a 'virtual image' generated from a
-    parallel `tclean` run. Generates a new image appended with '.concat'.
+    Create a contiguous image cube file from a 'parallel image' generated from
+    a multiprocess `tclean` run with `parallel=True`. Generates a new image
+    appended with '.concat'.
     """
     _, ext = os.path.splitext(imagename)
     ext = ext.lstrip('.')
@@ -784,13 +808,14 @@ def check_max_residual(imagebase, sigma=5.5):
 ###############################################################################
 
 class ImageConfig(object):
-    scales = [0, 15, 45, 135]  # pixels; point, 1.5, 4.5 beam hpbw's (10 pix)
-    mask_ang_scales = [0, 1, 3]  # arcsec
+    _scales = [0, 15, 45, 135]  # pixels; point, 1.5, 4.5 beam hpbw's (10 pix)
+    _mask_ang_scales = [0, 1, 3]  # arcsec
+    _autom_kwargs = AUTOM_KWARGS
+    _autom_7m_kwargs = AUTOM_7M_KWARGS
     smallscalebias = -1.0
     gain = 0.05
     cyclefactor = 2.0
     parallel = MPIEnvironment().is_mpi_enabled
-    autom_kwargs = AUTOM_KWARGS.copy()
 
     def __init__(self, dset, spw, fullcube=True, weighting=0.5):
         """
@@ -817,9 +842,31 @@ class ImageConfig(object):
         self.weighting = weighting
         self.robust = robust
         self.weighting_kind = weighting_kind
+        # copy mutable class attributes to avoid global mutation in all instances
+        self.scales = deepcopy(self._scales)
+        self.mask_ang_scales = deepcopy(self._mask_ang_scales)
+        # set auto-multithresh keyword arguments for different array configurations
+        if dset.kind in ('joint', '12m'):
+            self.autom_kwargs = deepcopy(self._autom_kwargs)
+        elif dset.kind == '7m':
+            self.autom_kwargs = deepcopy(self._autom_7m_kwargs)
+        else:
+            raise ValueError('No default auto-multithresh parameters available for dset.kind: "{0}"'.format(dset.kind))
 
     @classmethod
     def from_name(cls, field, label, kind='joint', **kwargs):
+        """
+        Create an `ImageConfig` object directly from the field name and SPW
+        label without creating instances of auxillary class instances.
+
+        Parameters
+        ----------
+        field : str
+        label : str
+        kind : str
+        fullcube : bool
+        weighting : (str, number)
+        """
         spw = ALL_SPWS[label]
         dset = DataSet(field, setup=spw.setup, kind=kind)
         return cls(dset, spw, **kwargs)
@@ -834,6 +881,9 @@ class ImageConfig(object):
 
     @property
     def rms(self):
+        """
+        Image RMS determined using `imstat` over the entire dirty cube.
+        """
         imagename = '{0}.image'.format(self.dirty_imagebase)
         rms = calc_rms_from_image(imagename)
         log_post('-- RMS {0} Jy'.format(rms))
@@ -906,7 +956,21 @@ class ImageConfig(object):
         else:
             return '{0}_{1}'.format(stem, ext)
 
+    def cleanup(self, imagename):
+        """
+        Delete the ".workdirectory" folders that are occassionally generated
+        and not removed in mpicasa. Also concatenate all image products into
+        contiguous "serial" products using `ia.imageconcat`.
+        """
+        delete_workdir(imagename)
+        if self.parallel:
+            concat_parallel_all_extensions(imagename)
+
     def make_dirty_cube(self):
+        """
+        Generate a dirty image cube and associated `tclean` products.
+        Run with equivalent parameters as `clean_line` but with `niter=0`.
+        """
         dset, spw = self.dset, self.spw
         # Book-keeping before run
         imagename = self.dirty_imagebase
@@ -946,6 +1010,9 @@ class ImageConfig(object):
 
     def clean_line_nomask(self, sigma=4.5, scale_upper_limit=60):
         """
+        Deconvolve the image without using a mask to a depth of `sigma` and
+        excluding multiscale size scales beyond `scale_upper_limit`.
+
         Parameters
         ----------
         sigma : number
@@ -1006,6 +1073,17 @@ class ImageConfig(object):
         self.cleanup(imagename)
 
     def make_seed_mask(self, sigma=5.0):
+        """
+        Create a mask based on a significance cut applied to the restored image
+        of the unmasked run generated from `clean_line_nomask`. This mask is
+        used to "seed" the mask generated using auto-multithresh in `clean_line`
+        with `mask_method='seed+multithresh'`.
+
+        Parameters
+        ----------
+        sigma : number
+            Limit to threhsold the restored image on.
+        """
         imagename = self.nomask_imagebase
         if not os.path.exists(imagename+'.image'):
             log_post('-- File not found: {0}.image'.format(imagename))
@@ -1015,9 +1093,12 @@ class ImageConfig(object):
                 mask_ang_scales=self.mask_ang_scales)
 
     def clean_line(self, mask_method='seed+multithresh', sigma=2,
-            ext=None):
+            ext=None, restart=False, interactive=False):
         """
         Primary interface for calling `tclean` to deconvolve spectral windows.
+        Multiple masking methods exist to automatically generate the clean
+        masks used. The preferred method is `mask_method='seed+multithresh'`,
+        which requires that `.clean_line_nomask` is run first.
 
         Parameters
         ----------
@@ -1026,30 +1107,43 @@ class ImageConfig(object):
                 'auto-multithresh' -- use auto-multithresh automated masking
                 'seed+multithresh' -- generate initial mask from free clean
                     and then use auto-multithresh for automatic masking.
-                'taper' -- use mask generated from separate tapering run
+                'taper' -- use mask generated from a separate tapered run;
+                    requires re-implementation.
         sigma : number
             Threshold in standard deviations of the noise to clean down to within
             the clean-mask. An absolute RMS is calculated from off-line channels in
             a dirty cube. The same value is applied to all channels.
         ext : str
             String of the form '_EXT' appended to the end of the image name.
+        restart : bool, default False
+            Do not delete existing image product files if present, and do not
+            re-calculate the PSF and residual files on the first Major Cycle of
+            the new run.
+        interactive : bool, default False
+            Begin tclean in interactive mode with `interactive=True`. This may
+            be useful for touching-up some channels with particularly difficult
+            to clean extended emission.
         """
         dset, spw = self.dset, self.spw
         # Book-keeping before run
         imagename = self.get_imagebase(ext=ext)
         log_post(':: Running clean ({0})'.format(imagename))
+        # Restart should only be performed if the residual and PSF files exist.
+        if restart:
+            psf_filen = '{0}.psf'.format(imagename)
+            res_filen = '{0}.residual'.format(imagename)
+            if not os.path.exists(psf_filen) or not os.path.exists(res_filen):
+                raise RuntimeError('Invalid restart: PSF or residual do not exist.')
+        # If restart=True then do *not* calculate PSF/residual on first
+        # Major Cycle, i.e., set: calcres=False, calcpsf=False.
+        calc_on_first_major = not restart
         # Calculate RMS values from off-line channels of dirty cube.
         threshold = format_rms(self.rms, sigma=sigma)
         # channel ranges: windowed or common coverage
         start, nchan = self.selected_start_nchan
         # masking method, auto-multithresh or mask from tapered run
         if mask_method == 'auto-multithresh' or mask_method == 'seed+multithresh':
-            if dset.kind in ('joint', '12m'):
-                mask_kwargs = self.autom_kwargs
-            elif dset.kind == '7m':
-                raise NotImplementedError
-            else:
-                raise ValueError('No parameters available for dset.kind: "{0}"'.format(dset.kind))
+            mask_kwargs = self.autom_kwargs
         elif mask_method == 'taper':
             # user supplied mask from seperate tapering run
             mask_kwargs = {
@@ -1059,10 +1153,16 @@ class ImageConfig(object):
         else:
             raise ValueError('Invalid mask_method: "{0}"'.format(mask_method))
         # run tclean
-        delete_all_extensions(imagename)
-        if mask_method == 'seed+multithresh':
+        if not restart:
+            delete_all_extensions(imagename)
+        if not restart and mask_method == 'seed+multithresh':
+            if parallel:
+                # FIXME The mask generated is a "serial" image which is not
+                # read correctly, and subsequently ignored, by tclean run in
+                # parallel. It appears the image must be converted to a
+                # "parallel image" first somehow.
+                raise NotImplementedError('mask_method="seed+multithresh" unsupported with parallel=True')
             # copy summask to be used in-place with default extension
-            # FIXME standard image doesn't appear to work with parallel=True
             mask_filen = self.nomask_imagebase + '.summask'
             shutil.copytree(mask_filen, imagename+'.mask')
         tclean(
@@ -1093,19 +1193,25 @@ class ImageConfig(object):
             pblimit=dset.pblimit,
             niter=NITERMAX,
             threshold=threshold,
-            interactive=False,
+            # general run properties
+            interactive=interactive,
+            calcpsf=calc_on_first_major,
+            calcres=calc_on_first_major,
             parallel=self.parallel,
             # mask parameters
             **mask_kwargs
         )
         self.cleanup(imagename)
 
-    def cleanup(self, imagename):
-        delete_workdir(imagename)
-        if self.parallel:
-            concat_parallel_all_extensions(imagename)
+    def clean_line_interactive_restart(self, **kwargs):
+        self.clean_line(restart=True, interactive=True, **kwargs)
 
     def postprocess(self, ext=None, make_fits=True):
+        """
+        Post-process image products. The maximum residual is logged to the
+        CASA log file and STDOUT, the image is primary beam corrected, smoothed
+        to a common beam, and the final FITS file is exported.
+        """
         imagebase = self.get_imagebase(ext=ext)
         check_max_residual(imagebase, sigma=5.0)
         primary_beam_correct(imagebase)
@@ -1119,6 +1225,19 @@ class ImageConfig(object):
             export_fits(cm_name)
 
     def run_pipeline(self, ext='clean'):
+        """
+        Run all pipeline tasks with default parameters. Custom recipes should
+        call the individual methods in sequence. The final pipeline product
+        will be named of the form:
+            "<FILENAME>_<EXT>.image.pbcor.common.fits"
+        or if `ext=None`:
+            "<FILENAME>.image.pbcor.common.fits"
+
+        Parameters
+        ----------
+        ext : str
+            Extension name for final, deconvolved image products.
+        """
         self.make_dirty_cube()
         self.clean_line_nomask(sigma=4.5)
         self.make_seed_mask(sigma=5.0)
@@ -1256,9 +1375,9 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 
 def savefig(filen, dpi=300):
     for ext in ('png', 'pdf'):
-        outfilen = os.path.join(PLOT_DIR, '{0}.{1}'.format(filen, ext))
-        plt.savefig(outfilen, dpi=dpi)
-    log_post('-- figure saved for: {0}'.format(filen))
+        plot_filen = os.path.join(PLOT_DIR, '{0}.{1}'.format(filen, ext))
+        plt.savefig(plot_filen, dpi=dpi)
+    log_post('-- figure saved for: {0}'.format(plot_filen))
     plt.close('all')
 
 
@@ -1269,6 +1388,8 @@ class CubeSet(object):
         # Read in images and calculate noise
         stem = os.path.splitext(path)[0]
         self.stem = stem
+        self.basename = os.path.basename(stem)
+        log_post('-- Reading in data cubes for: {0}'.format(self.basename))
         log_post('-- Reading image')
         self.image = self.get_chunk(stem+'.image')
         log_post('-- Reading residual')
@@ -1327,6 +1448,10 @@ class CubeSet(object):
 
 def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     """
+    Generate Quality Assurance plots by visualizing each channel where
+    significant emission occurs in the image cube of interesting (e.g.,
+    `.image` or `.residual`).
+
     Parameters
     ----------
     cset : CubeSet
@@ -1341,9 +1466,9 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     if kind == 'image':
         cmap = plt.cm.afmhot if kind == 'image' else plt.cm.RdBu
         mask_cont_color = 'cyan'
-        vmin, vmax = None, None
+        vmin, vmax = -3 * cset.rms, 10 * cset.rms
     elif kind == 'residual':
-        cmap = plt.cm.RdBu
+        cmap = plt.cm.RdBu_r
         mask_cont_color = 'black'
         vmin, vmax = -5 * cset.rms, 5 * cset.rms
     else:
@@ -1366,19 +1491,24 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
         # show colorscale of image data
         ax.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
         # show HPBW contour for primary beam data
-        ax.contour(pbeam, levels=[0.5], colors=['0.5'],
-                linestyles=['dashed'], linewidths=[0.4])
+        ax.contour(pbeam, levels=[0.5], colors='0.5',
+                linestyles='dashed', linewidths=0.4)
+        # show contours for high-SNR emission
+        if kind == 'image':
+            high_snr_levels = cset.rms * np.array([10, 20, 40, 80])
+            #ax.contour(data, levels=high_snr_levels, cmap=plt.cm.brg,
+            #        linestyles='solid', linewidths=0.4)
+            ax.contourf(data, levels=high_snr_levels, cmap=plt.cm.rainbow)
         # show contour for the clean mask
         if mask.any() > 0:
-            ax.contour(mask, level=[0.5], colors=[mask_cont_color],
-                    linestyles=['solid'], linewidths=[0.2])
+            ax.contour(mask, level=[0.5], colors=mask_cont_color,
+                    linestyles='solid', linewidths=0.2)
         # show nice channel label in the top-right corner
         text = ax.annotate(str(chan_ix), (0.83, 0.91),
                 xycoords='axes fraction', fontsize='xx-small')
         text.set_path_effects([
                 path_effects.withStroke(linewidth=2, foreground='white')])
-        # FIXME
-        # show axis ticks get relative offsets in arcsec
+        # show axis ticks as relative offsets in fixed arcsec interval
         ax.set_xticks(tick_pos)
         ax.set_yticks(tick_pos)
         ax.set_xticklabels([])
@@ -1398,9 +1528,10 @@ def make_all_qa_plots(field, ext='clean'):
     image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
     for path in image_paths:
         cset = CubeSet(path)
-        outfilen = '{0}_qa_plot'.format(cset.stem)
+        outfilen = '{0}_qa_plot'.format(cset.basename)
         make_qa_plot(cset, kind='image', outfilen=outfilen)
         make_qa_plot(cset, kind='residual', outfilen=outfilen)
+        del cset
 
 
 ###############################################################################
@@ -1409,7 +1540,7 @@ def make_all_qa_plots(field, ext='clean'):
 
 if __name__ == '__main__':
     # NOTE statements placed in this block will be executed on `execfile` in
-    #      addition to when qsub is run.
+    #      addition to when called by qsub for batch jobs.
     pass
 
 
