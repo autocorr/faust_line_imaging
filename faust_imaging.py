@@ -681,9 +681,9 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     ----------
     imagename : str
         CASA Image name, e.g., "244.936GHz_CS_joint_0.5_dirty.image"
-    chan_start : (int, None)
+    chan_start : int, None
         Start channel. If None, use full channel range.
-    chan_end : (int, None)
+    chan_end : int, None
         End channel. If None, use full channel range.
 
     Returns
@@ -843,11 +843,7 @@ class ImageConfig(object):
         dset : DataSet
         spw : Spw
         fullcube : bool
-            Image the full spectral window or a small window around the SPWs
-            defined rest frequency.
-        weighting : (str, number)
-            The name of the weighting method (string) or briggs factor for briggs
-            weighting (number)
+        weighting : str, number
         """
         assert dset.setup == spw.setup
         self.dset = dset
@@ -878,10 +874,20 @@ class ImageConfig(object):
         Parameters
         ----------
         field : str
-        label : str
+            Field name, e.g., "CB68"
+        label : str, None
+            SPW label, e.g., "216.113GHz_DCOp". If `None` then apply to all
+            Setups and SPWs for target field.
         kind : str
+            Datset descriptor for which measurement set files to use. Valid
+            values include: ('joint', '12m', '7m').
         fullcube : bool
-        weighting : (str, number)
+            Image the full spectral window or a small window around the SPWs
+            defined rest frequency.
+        weighting : str, number
+            Either a string for a weighting method recognized by `tclean`,
+            such as 'natural' or 'uniform'; or a number for a Briggs weighting
+            robust value.
         """
         spw = ALL_SPWS[label]
         dset = DataSet(field, setup=spw.setup, kind=kind)
@@ -957,7 +963,7 @@ class ImageConfig(object):
 
         Parameters
         ----------
-        ext : (str, Iterable, object)
+        ext : str, Iterable, object
             If `ext` is None, then compose path of setup, spw, array.
             If `ext` is an iterable, append each by underscores.
             If other object, must have a `__repr__` method for representation string.
@@ -1292,7 +1298,7 @@ def run_pipeline(field, setup=None, weightings=None, fullcube=True,
     Parameters
     ----------
     field : str
-    setup : (int, None)
+    setup : int, None
         Setup number, if `None` run on all setups in sequence.
     weightings : Iterable, default (0.5,)
         List of uv-weightings to use in `tclean`, which may include the string
@@ -1350,11 +1356,11 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
     ----------
     field : str
         Field name, e.g., "CB68"
-    label : (str, None)
+    label : str, None
         SPW label, e.g., "216.113GHz_DCOp". If `None` then apply to all
         Setups and SPWs for target field.
     kind : str
-    weighting : (str, number)
+    weighting : str, number
     """
     log_post(':: Renaming final products from old frequency convention')
     if label is not None:

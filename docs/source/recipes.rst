@@ -13,14 +13,15 @@ execution, and still a substantial amount of time when executed in parallel.
 
 Running the default pipeline
 ----------------------------
-The ``ImageConfig`` class provides the primary interface to ``tclean`` within
-CASA and encapsulates properties specific to a field, SPW, array configuration,
-and desired ``tclean`` parameters. Please refer to the :doc:`API Documentation
-<faust_imaging>` and the docstring for additional information on the
-calling convention of this class.
+The :class:`faust_imaging.ImageConfig` class provides the primary interface to
+``tclean`` within CASA and encapsulates properties specific to a field, SPW,
+array configuration, and desired ``tclean`` parameters. Please refer to the
+:doc:`API Documentation <faust_imaging>` and the docstring for additional
+information on the calling convention of this class.
 
 To run all tasks of the pipeline with default parameters, first create an
-instance of the ``ImageConfig`` class and use the ``run_pipeline`` method.
+instance of the :class:`faust_imaging.ImageConfig` class and use the
+:meth:`faust_imaging.ImageConfig.run_pipeline` method.
 
 .. code-block:: python
 
@@ -50,10 +51,11 @@ robust factor of ``0.5``. The full calling convention is:
 
 Pipeline task description
 -------------------------
-The ``run_pipeline`` method discussed above is primarily a wrapper for calling
-all of the pipeline tasks in sequence using the default parameters. For custom
-imaging, it is recommended that users create a recipe using the underlying
-tasks.  As an example, this is the code that is executed by default:
+The :meth:`faust_imaging.ImageConfig.run_pipeline` method discussed above is
+primarily a wrapper for calling all of the pipeline tasks in sequence using the
+default parameters. For custom imaging, it is recommended that users create a
+recipe using the underlying tasks.  As an example, this is the code that is
+executed by default:
 
 .. code-block:: python
 

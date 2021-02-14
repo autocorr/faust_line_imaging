@@ -17,8 +17,8 @@ pipeline script from within CASA:
    # or using a relative path
    execfile('../casa_scripts/faust_imaging.py')
 
-To run the imaging pipeline for all SPWs of a target, use the ``run_pipeline``
-function now in the global scope.
+To run the imaging pipeline for all SPWs of a target, use the
+:func:`faust_imaging.run_pipeline` function, now in the global scope.
 
 .. code-block:: python
 
@@ -27,8 +27,8 @@ function now in the global scope.
    # for all setups (default)
    run_pipeline('CB68', setup=None)
 
-A list of uv-weightings to use and whether to image the fullcube or a windowed
-sub-cube may be passed.
+A list of *uv*-weightings to use and whether to image the fullcube or a
+windowed sub-cube may be passed.
 
 .. code-block:: python
 
