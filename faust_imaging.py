@@ -1144,7 +1144,7 @@ class ImageConfig(object):
         restart : bool, default False
             Do not delete existing image product files if present, and do not
             re-calculate the PSF and residual files on the first Major Cycle of
-            the new run.
+            the new run if they exist.
         interactive : bool, default False
             Begin tclean in interactive mode with `interactive=True`. This may
             be useful for touching-up some channels with particularly difficult
@@ -1154,15 +1154,14 @@ class ImageConfig(object):
         # Book-keeping before run
         imagename = self.get_imagebase(ext=ext)
         log_post(':: Running clean ({0})'.format(imagename))
-        # Restart should only be performed if the residual and PSF files exist.
+        # If restarting then do not re-calculate PSF/residual on the first
+        # Major Cycle if the PSF/residual files exist, i.e., set:
+        # calcres=False, calcpsf=False.
         if restart:
             psf_filen = '{0}.psf'.format(imagename)
             res_filen = '{0}.residual'.format(imagename)
-            if not os.path.exists(psf_filen) or not os.path.exists(res_filen):
-                raise RuntimeError('Invalid restart: PSF or residual do not exist.')
-        # If restart=True then do *not* calculate PSF/residual on first
-        # Major Cycle, i.e., set: calcres=False, calcpsf=False.
-        calc_on_first_major = not restart
+            calcpsf = not os.path.exists(psf_filen)
+            calcres = not os.path.exists(res_filen)
         # Calculate RMS values from off-line channels of dirty cube.
         threshold = format_rms(self.rms, sigma=sigma)
         # channel ranges: windowed or common coverage
@@ -1221,8 +1220,8 @@ class ImageConfig(object):
             threshold=threshold,
             # general run properties
             interactive=interactive,
-            calcpsf=calc_on_first_major,
-            calcres=calc_on_first_major,
+            calcpsf=calcpsf,
+            calcres=calcres,
             parallel=self.parallel,
             # mask parameters
             **mask_kwargs
