@@ -345,6 +345,9 @@ class Spw(object):
     def label(self):
         return '{0}_{1}'.format(self.short_restfreq, self.mol_name)
 
+    def copy(self):
+        return deepcopy(self)
+
 
 def parse_spw_info_from_ms(ms_filen, field='CB68', out_filen=None):
     # NOTE This function was only needed to write out the values that can now
@@ -1238,7 +1241,7 @@ class ImageConfig(object):
         to a common beam, and the final FITS file is exported.
         """
         imagebase = self.get_imagebase(ext=ext)
-        check_max_residual(imagebase, sigma=5.0)
+        check_max_residual(imagebase, sigma=5.5)
         primary_beam_correct(imagebase)
         # smooth to common beam and export to FITS
         im_name = imagebase + '.image.pbcor'
