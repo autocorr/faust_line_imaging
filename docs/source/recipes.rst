@@ -140,11 +140,19 @@ be of the form:
    # example:
    images/CB68/CB68_244.936GHz_CS_joint_0.5_clean.image.pbcor.common.fits
 
-As an optional final step, quality assurance (QA) plots can be generated
-with the function :func:`faust_imaging.make_all_qa_plots`. This function will
-create channel maps of all restored images and residual images for a field
-where the peak restored image intensity exceeds 6-sigma. These plots are
-useful for assessing whether further deconvolution is required.
+As an optional final step, quality assurance plots can be generated.
+These plots are useful for assessing whether further deconvolution is required.
+Making these plots is described in `QA Plots`_.
+
+
+.. _QA Plots:
+Quality assurance plots
+-----------------------
+Quality Assurance (QA) plots are useful for quickly obtaining an overview of
+whether the deconvolved products are satisfactory. The function
+:func:`faust_imaging.make_all_qa_plots` can be used to generate channel maps of
+all restored images and residual images for a field where the peak restored
+image intensity exceeds 6-sigma.
 
 .. code-block:: python
 
@@ -176,7 +184,9 @@ The primary target of the SPW can be determined by comparing the value of
 transitions from the correlator configuration).
 
 Imaging cut-outs that were not the primary targets of an SPW requires creating
-a new :class:`faust_imaging.Spw` instance.
+new instances of the classes :class:`faust_imaging.Spw` and
+:class:`faust_imaging.DataSet` in order to instantiate ``ImageConfig``
+directly.
 
 .. code-block:: python
 
@@ -200,7 +210,6 @@ a new :class:`faust_imaging.Spw` instance.
 
 
 .. _Restarting:
-
 Restarting ``tclean`` and manual masking
 ----------------------------------------
 Some datasets can be difficult to clean satisfactorily with the default
