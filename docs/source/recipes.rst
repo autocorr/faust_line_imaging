@@ -135,17 +135,21 @@ be of the form:
 
 .. code-block:: none
 
+   # template form:
    <PROD_DIR>/<FIELD>/<FIELD>_<LABEL>_<KIND>_<WEIGHT>_<EXT>.image.pbcor.common.fits
+   # example:
+   images/CB68/CB68_244.936GHz_CS_joint_0.5_clean.image.pbcor.common.fits
 
 As an optional final step, quality assurance (QA) plots can be generated
 with the function :func:`faust_imaging.make_all_qa_plots`. This function will
 create channel maps of all restored images and residual images for a field
-where the peak restored image intensity exceeds 6-sigma.
+where the peak restored image intensity exceeds 6-sigma. These plots are
+useful for assessing whether further deconvolution is required.
 
 .. code-block:: python
 
    make_all_qa_plots('CB68', ext='clean')
-   # PDF/PNG files will be written to <PLOT_DIR>/plots
+   # PDF/PNG files will be written to <PLOT_DIR> (default "<PROD_DIR>/plots")
 
 
 Imaging cut-out velocity windows
