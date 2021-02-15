@@ -960,8 +960,10 @@ class ImageConfig(object):
 
     def get_imagebase(self, ext=None):
         """
-        Get the relative path name for an image basename following:
+        Get the relative path name for an image basename following
+
             "images/<FIELD>/<LABEL>_<ARRAY>_<WEIGHTING>[_<EXT>]"
+
         Note that this does not include image extensions such as ".image"
 
         Parameters

@@ -12,7 +12,8 @@ running specialized jobs for custom imaging may be found under the
 
 The pipeline is authored by Brian Svoboda and Claire Chandler. The code is
 released under the MIT License. A copy of the license is supplied under the
-LICENSE file distributed with the software.
+LICENSE file distributed with the software. The code may be found on `GitHub
+<https://github.com/autocorr/faust_line_imaging>`_.
 
 Documentation
 =============
