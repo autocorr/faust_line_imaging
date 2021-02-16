@@ -146,6 +146,7 @@ Making these plots is described in `QA Plots`_.
 
 
 .. _QA Plots:
+
 Quality assurance plots
 -----------------------
 Quality Assurance (QA) plots are useful for quickly obtaining an overview of
@@ -210,6 +211,7 @@ directly.
 
 
 .. _Restarting:
+
 Restarting ``tclean`` and manual masking
 ----------------------------------------
 Some datasets can be difficult to clean satisfactorily with the default

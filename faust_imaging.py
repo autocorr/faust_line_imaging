@@ -7,6 +7,7 @@ This module contains the implementation for the CASA spectral line imaging
 pipeline for the archival products of the ALMA Large Program FAUST. Please
 see the README file for further information and the documentation, which
 may be found under the `docs/` directory or online at:
+
     https://faust-imaging.readthedocs.io
 
 This script is to be run under CASA v5.6 and Python v2.7. To use the script
