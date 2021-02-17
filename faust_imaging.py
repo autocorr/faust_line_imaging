@@ -1148,9 +1148,7 @@ class ImageConfig(object):
         ext : str
             String of the form '_EXT' appended to the end of the image name.
         restart : bool, default False
-            Do not delete existing image product files if present, and do not
-            re-calculate the PSF and residual files on the first Major Cycle of
-            the new run if they exist.
+            Restart using the existing model and mask files.
         interactive : bool, default False
             Begin tclean in interactive mode with `interactive=True`. This may
             be useful for touching-up some channels with particularly difficult
@@ -1160,14 +1158,6 @@ class ImageConfig(object):
         # Book-keeping before run
         imagename = self.get_imagebase(ext=ext)
         log_post(':: Running clean ({0})'.format(imagename))
-        # If restarting then do not re-calculate PSF/residual on the first
-        # Major Cycle if the PSF/residual files exist, i.e., set:
-        # calcres=False, calcpsf=False.
-        if restart:
-            psf_filen = '{0}.psf'.format(imagename)
-            res_filen = '{0}.residual'.format(imagename)
-            calcpsf = not os.path.exists(psf_filen)
-            calcres = not os.path.exists(res_filen)
         # Calculate RMS values from off-line channels of dirty cube.
         threshold = format_rms(self.rms, sigma=sigma)
         # channel ranges: windowed or common coverage
@@ -1184,8 +1174,8 @@ class ImageConfig(object):
         else:
             raise ValueError('Invalid mask_method: "{0}"'.format(mask_method))
         # run tclean
-        if not restart:
-            delete_all_extensions(imagename)
+        keep_exts = ['model', 'mask'] if restart else None
+        delete_all_extensions(imagename, keep_exts=keep_exts)
         if not restart and mask_method == 'seed+multithresh':
             if parallel:
                 # FIXME The mask generated is a "serial" image which is not
@@ -1226,8 +1216,6 @@ class ImageConfig(object):
             threshold=threshold,
             # general run properties
             interactive=interactive,
-            calcpsf=calcpsf,
-            calcres=calcres,
             parallel=self.parallel,
             # mask parameters
             **mask_kwargs
