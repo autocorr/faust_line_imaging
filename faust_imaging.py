@@ -709,15 +709,27 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     return rms
 
 
-def create_mask_from_threshold(infile, outfile, sigma):
+def create_mask_from_threshold(infile, outfile, sigma, overwrite=True):
+    """
+    Create a 1/0 mask according to whether pixel values in the input image are
+    or are not above ``sigma`` times the RMS of the cube.
+
+    Parameters
+    ----------
+    infile : str
+    outfile : str
+    sigma : number
+    overwrite : bool, default True
+    """
+    if overwrite:
+        if_exists_remove(outfile)
     rms = calc_rms_from_image(infile)
     thresh = sigma * rms
     immath(imagename=infile, mode='evalexpr', outfile=outfile,
             expr='iif(IM0>{0},1,0)'.format(thresh))
 
 
-def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3),
-        overwrite=True):
+def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3)):
     """
     Create a joint mask from multiple smoothed copies of an image. A file
     with the `.summask` extension is created from the union of an RMS threshold
@@ -732,8 +744,6 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3),
     mask_ang_scales : Iterable(number)
         Gaussian kernel FWHM in units of arcseconds to convolve each image
         with (note: not in pixel units).
-    overwrite : bool
-        Whether to overwrite the smoothed mask files if they exist.
 
     Returns
     -------
@@ -759,10 +769,8 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3),
             # For a smoothing scale of zero, use the original image.
             create_mask_from_threshold(original_image, mask_image, sigma)
             continue
-        if overwrite:
-            if_exists_remove(smooth_image)
-            if_exists_remove(mask_image)
         # Smooth the image with a Gaussian kernel of the given scale.
+        if_exists_remove(smooth_image)
         imsmooth(imagename=original_image, kernel='gauss',
                 major='{0}arcsec'.format(scale),
                 minor='{0}arcsec'.format(scale), pa='0deg', targetres=True,
