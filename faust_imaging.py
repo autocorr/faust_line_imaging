@@ -994,6 +994,32 @@ class ImageConfig(object):
         if self.parallel:
             concat_parallel_all_extensions(imagename)
 
+    def remove_all_files(self, confirm=True):
+        """
+        Attempt to safely remove all files matching the image basename
+        returned by :meth:`faust_imaging.ImageConfig.get_imagebase`.
+
+        Parameters
+        ----------
+        confirm : bool
+            Require confirmation before removing files.
+        """
+        imagebase = self.get_imagebase()
+        matched_files = glob('{0}*'.format(imagebase))
+        matched_files.sort()
+        if confirm:
+            for filen in matched_files:
+                print('  ', filen)
+            response = raw_input('Delete the above files? [y/N] ')
+            if response.lower() != 'y':
+                return
+        for filen in matched_files:
+            if os.path.isdir(filen):
+                if_exists_remove(filen)
+            else:
+                log_post('-- Removing {0}'.format(filen))
+                os.remove(filen)
+
     def make_dirty_cube(self):
         """
         Generate a dirty image cube and associated `tclean` products.
