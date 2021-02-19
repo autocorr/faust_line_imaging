@@ -462,12 +462,19 @@ ALL_SPW_LABELS = ALL_SPWS.keys()
 # General utility functions
 ###############################################################################
 
-def log_post(msg):
+def log_post(msg, priority='INFO'):
     """
     Post a message to the CASA logger, logfile, and stdout/console.
+
+    Parameters
+    ----------
+    msg : str
+        Message to post.
+    priority : str, default 'INFO'
+        Priority level. Includes 'INFO', 'WARN', 'SEVERE'.
     """
     print(msg)
-    casalog.post(msg, 'INFO', 'faust_pipe')
+    casalog.post(msg, priority, 'faust_pipe')
 
 
 def check_delete_image_files(imagename, parallel=False, preserve_mask=False):
@@ -514,6 +521,33 @@ def check_delete_image_files(imagename, parallel=False, preserve_mask=False):
             shutil.rmtree(filen)
 
 
+def safely_remove_file(filen):
+    if not os.path.exists(filen):
+        log_post('-- File not found: {0}'.format(filen), priority='WARN')
+        return
+    log_post(':: Removing: {0}'.format(filen))
+    if os.path.isdir(filen):
+        # The target is a directory, i.e., a CASA image. Use `rmtables` to
+        # safely release file locks within CASA on the internal tables.
+        rmtables(filen)
+        # The file will still exist if rmtables failed, such as for parallel
+        # images that have a directory structure that `rmtables` does not
+        # recognize.
+        try:
+            shutil.rmtree(filen)
+            log_post('-- Hard delete: {0}'.format(filen))
+        except OSError:
+            pass
+    else:
+        # Target is a file and not a directory (e.g., FITS).
+        os.remove(filen)
+
+
+def if_exists_remove(filen):
+    if os.path.exists(filen):
+        safely_remove_file(filen)
+
+
 def delete_all_extensions(imagename, keep_exts=None):
     """
     Parameters
@@ -525,19 +559,7 @@ def delete_all_extensions(imagename, keep_exts=None):
     for filen in glob(imagename+'.*'):
         if keep_exts is not None and any(filen.endswith(ext) for ext in keep_exts):
             continue
-        if_exists_remove(filen)
-
-
-def if_exists_remove(filen):
-    if os.path.exists(filen):
-        log_post(':: Removing {0}'.format(filen))
-        try:
-            rmtables(filen)
-            # the file will still exist if rmtables failed
-            shutil.rmtree(filen)
-            log_post('-- Hard delete: {0}'.format(filen))
-        except OSError:
-            pass
+        safely_remove_file(filen)
 
 
 def delete_workdir(imagename):
@@ -1023,11 +1045,7 @@ class ImageConfig(object):
             if response.lower() != 'y':
                 return
         for filen in matched_files:
-            if os.path.isdir(filen):
-                if_exists_remove(filen)
-            else:
-                log_post('-- Removing {0}'.format(filen))
-                os.remove(filen)
+            safely_remove_file(filen)
 
     def make_dirty_cube(self):
         """
@@ -1209,8 +1227,10 @@ class ImageConfig(object):
         else:
             raise ValueError('Invalid mask_method: "{0}"'.format(mask_method))
         # run tclean
-        keep_exts = ['model', 'mask'] if restart else None
-        delete_all_extensions(imagename, keep_exts=keep_exts)
+        if restart:
+            safely_remove_file('{0}.image'.format(imagename))
+        else:
+            delete_all_extensions(imagename)
         if not restart and mask_method == 'seed+multithresh':
             if parallel:
                 # FIXME The mask generated is a "serial" image which is not
@@ -1351,7 +1371,6 @@ def run_pipeline(field, setup=None, weightings=None, fullcube=True,
                 config.run_pipeline()
     # TODO:
     #   - create moment maps
-    #   - create diagnostic plots (channel maps and moments)
 
 
 ###############################################################################
@@ -1424,6 +1443,15 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
         # re-export FITS file
         export_fits(old_name)
         shutil.move(old_name+'.fits', new_name+'.fits')
+
+
+###############################################################################
+# Moment maps
+###############################################################################
+
+# use clean mask for moment map masking
+# can use with `mask` parameter without using immath
+# [0, 1, 2, 8, 9]  # m0, m1, m2, max, maxcoord
 
 
 ###############################################################################
