@@ -1485,6 +1485,7 @@ class CubeSet(object):
         # drop (degenerate) stokes axis
         chunk = ia.getchunk(dropdeg=True)
         ia.close()
+        ia.done()
         return chunk.transpose()
 
     def iter_planes(self):
@@ -1512,7 +1513,7 @@ class CubeSet(object):
 def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     """
     Generate Quality Assurance plots by visualizing each channel where
-    significant emission occurs in the image cube of interesting (e.g.,
+    significant emission occurs in the image cube of interest (i.e.,
     `.image` or `.residual`).
 
     Parameters
@@ -1590,9 +1591,34 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     savefig(outfilen_ext)
 
 
-def make_all_qa_plots(field, ext='clean'):
+def make_all_qa_plots(field, ext='clean', overwrite=True):
+    """
+    Generate all Quality Assurance plots for all image cubes matching
+    the given field ID name and extension. Plots will be written to
+    the directory set in ``PLOT_DIR``.
+
+    Parameters
+    ----------
+    field : str
+        Target field ID name
+    ext : str
+        Image extension name, such as 'clean', 'nomask', etc.
+    overwrite : bool, default True
+        Overwrite in plot files if they exist. Setting to False
+        will avoid the potentially large run-time cost of reading
+        cubes into memory to re-make existing plots.
+    """
     image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
     for path in image_paths:
+        # To avoid overwriting files, check if the image PDF file exists
+        # and skip plotting if it exists.
+        stem = os.path.splitext(path)[0]
+        basename = os.path.basename(stem)
+        pdf_path = '{0}{1}_qa_plot_image.pdf'.format(PLOT_DIR, basename)
+        if not overwrite and os.path.exists(pdf_path):
+            log_post('-- File exists, passing: {0}'.format(pdf_path))
+            continue
+        # Read in cube data and make plots
         cset = CubeSet(path)
         outfilen = '{0}_qa_plot'.format(cset.basename)
         make_qa_plot(cset, kind='image', outfilen=outfilen)
