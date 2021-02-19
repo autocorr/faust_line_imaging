@@ -153,12 +153,28 @@ Quality Assurance (QA) plots are useful for quickly obtaining an overview of
 whether the deconvolved products are satisfactory. The function
 :func:`faust_imaging.make_all_qa_plots` can be used to generate channel maps of
 all restored images and residual images for a field where the peak restored
-image intensity exceeds 6-sigma.
+image intensity exceeds 6-sigma. PDF and PNG files are written to the directory
+specified in ``PLOT_DIR`` (by default ``<PROD_DIR>/plots``).
 
 .. code-block:: python
 
    make_all_qa_plots('CB68', ext='clean')
-   # PDF/PNG files will be written to <PLOT_DIR> (default "<PROD_DIR>/plots")
+   # to skip plots that have already been made, set overwrite=False
+   make_all_qa_plots('CB68', ext='clean', overwrite=False)
+
+To make an individual QA plot, one may call the plot function directly with
+:class:`faust_imaging.CubeSet` and :func:`faust_imaging.make_qa_plot`.
+
+.. code-block:: python
+
+   # example filename for CB68
+   stem = 'CB68_244.936GHz_CS_joint_0.5_clean'
+   imagename = os.path.join(IMAG_DIR, 'CB68/{0}'.format(stem))
+   outfilen = '{0}_qa_plot'.format(stem)
+   # read in cube data and create plots
+   cset = CubeSet(imagename+'.image')
+   make_qa_plot(cset, kind='image', outfilen=outfilen)
+   make_qa_plot(cset, kind='residual', outfilen=outfilen)
 
 
 Imaging cut-out velocity windows
@@ -187,7 +203,8 @@ transitions from the correlator configuration).
 Imaging cut-outs that were not the primary targets of an SPW requires creating
 new instances of the classes :class:`faust_imaging.Spw` and
 :class:`faust_imaging.DataSet` in order to instantiate ``ImageConfig``
-directly.
+directly. This can be particularly useful for the continuum windows which
+are resource intensive to process with full bandwidth cubes.
 
 .. code-block:: python
 
