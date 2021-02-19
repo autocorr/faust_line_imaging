@@ -22,6 +22,7 @@ Copyright 2020, 2021 Brian Svoboda under the MIT License.
 """
 from __future__ import (print_function, division)
 
+import gc
 import os
 import sys
 import shutil
@@ -1472,6 +1473,12 @@ class CubeSet(object):
         self.good_chan = np.argwhere(self.good_mask).flatten()
         self.ngood = self.good_chan.size
 
+    def __del__(self):
+        del self.image
+        del self.residual
+        del self.mask
+        del self.pb
+
     @staticmethod
     def get_chunk(imagename):
         ia.open(imagename)
@@ -1590,7 +1597,9 @@ def make_all_qa_plots(field, ext='clean'):
         outfilen = '{0}_qa_plot'.format(cset.basename)
         make_qa_plot(cset, kind='image', outfilen=outfilen)
         make_qa_plot(cset, kind='residual', outfilen=outfilen)
+        # Delete the CubeSet and trigger a garbage collection to free memory.
         del cset
+        gc.collect()
 
 
 ###############################################################################
