@@ -237,17 +237,16 @@ heavy spatial filtering (ex. C180, c-C3H2). Good results on these cubes
 may require manual intervention in the defining the clean masks. After
 inspecting the results of the pipeline products, a run can be restarted using
 the same settings but using the ``restart`` and ``interactive`` keyword
-arguments :meth:`faust_imaging.ImageConfig.clean_line`:
+arguments of :meth:`faust_imaging.ImageConfig.clean_line`:
 
 .. code-block:: python
 
    config = ImageConfig(...)
    # The pipeline should already have been run previously and for this example
-   # there should exist images with image names ending in the extension
-   # "clean".
+   # there should exist images with names ending in the extension "clean".
 
    # Now restart the deconvolution using the existing files and run it in
-   # interactive mode. It's probably a good idea to backup the `.model` and
+   # interactive mode. It's likely a good idea to backup the `.model` and
    # `.mask` files in the event the deconvolution fairs poorly. Also, if you
    # wish to clean more deeply, one can set the `sigma` argument to a lower
    # value here.
@@ -270,7 +269,8 @@ have been cleaned satisfactorily, finish the run by clicking the red "stop
 sign" button.
 
 Restarting ``tclean`` can also be performed without using the interactive mode.
-One example usage may be cleaning the 
+One example usage may be cleaning to a shallow depth, inspecting the results or
+applying a few tweaks, and then cleaning more deeply.
 
 .. code-block:: python
 
