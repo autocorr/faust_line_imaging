@@ -237,20 +237,25 @@ heavy spatial filtering (ex. C180, c-C3H2). Good results on these cubes
 may require manual intervention in the defining the clean masks. After
 inspecting the results of the pipeline products, a run can be restarted using
 the same settings but using the ``restart`` and ``interactive`` keyword
-arguments:
+arguments :meth:`faust_imaging.ImageConfig.clean_line`:
 
 .. code-block:: python
 
    config = ImageConfig(...)
-   # The pipeline has already been run previously and there exist images with
-   # names ending in the extension "clean". Now restart the imaging using
-   # the existing files and running in interactive mode. It's probably
-   # a good idea to backup the `.model` and `.mask` files in the event
-   # the deconvolution fairs poorly.
-   config.clean_line_interactive_restart(ext='clean')
-   # The above command is equivalent to:
-   #   config.clean_line(ext='clean', restart=True, interactive=True)
-   # If the results are satisfactory, apply the post-processing steps
+   # The pipeline should already have been run previously and for this example
+   # there should exist images with image names ending in the extension
+   # "clean".
+
+   # Now restart the deconvolution using the existing files and run it in
+   # interactive mode. It's probably a good idea to backup the `.model` and
+   # `.mask` files in the event the deconvolution fairs poorly. Also, if you
+   # wish to clean more deeply, one can set the `sigma` argument to a lower
+   # value here.
+   config.clean_line(ext='clean', restart=True, interactive=True)
+   # Note that an alias is included for this use, identical in arguments and
+   # calling convention as above, named:
+   #   config.clean_line_interactive_restart(ext='clean')
+   # Now, if the results are satisfactory, apply the post-processing steps
    # to finish the pipeline.
    config.postprocess(ext='clean')
 
@@ -263,6 +268,22 @@ mask.  These channels have a high-probability of diverging if left to finish
 the run using the blue "right arrow". Once the extended emission appears to
 have been cleaned satisfactorily, finish the run by clicking the red "stop
 sign" button.
+
+Restarting ``tclean`` can also be performed without using the interactive mode.
+One example usage may be cleaning the 
+
+.. code-block:: python
+
+   config = ImageConfig(...)
+   # ... pipeline has been run up to `.clean_line`
+   # First, clean relatively shallowly to 3.5-sigma and let it run
+   # automatically.
+   config.clean_line(ext='clean', sigma=3.5)
+   # Inspect the resulting cubes to see if the results are satisfactory. The
+   # QA plots could be made for the target, for example.
+   # Now, continue the deconvolution to a lower depth of 2.0-sigma
+   config.clean_line(ext='clean', restart=True, sigma=2.0)
+   config.postprocess(ext='clean')
 
 
 Parallel image processing
