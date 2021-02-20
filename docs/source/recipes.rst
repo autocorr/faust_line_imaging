@@ -158,23 +158,23 @@ specified in ``PLOT_DIR`` (by default ``<PROD_DIR>/plots``).
 
 .. code-block:: python
 
+   # to overwrite all existing plots, use the default overwrite=True
    make_all_qa_plots('CB68', ext='clean')
+
    # to skip plots that have already been made, set overwrite=False
    make_all_qa_plots('CB68', ext='clean', overwrite=False)
 
-To make an individual QA plot, one may call the plot function directly with
-:class:`faust_imaging.CubeSet` and :func:`faust_imaging.make_qa_plot`.
+To make an individual QA plot from an image path name use
+:func:`faust_imaging.make_qa_plots_from_image`:
 
 .. code-block:: python
 
-   # example filename for CB68
-   stem = 'CB68_244.936GHz_CS_joint_0.5_clean'
-   imagename = os.path.join(IMAG_DIR, 'CB68/{0}'.format(stem))
-   outfilen = '{0}_qa_plot'.format(stem)
-   # read in cube data and create plots
-   cset = CubeSet(imagename+'.image')
-   make_qa_plot(cset, kind='image', outfilen=outfilen)
-   make_qa_plot(cset, kind='residual', outfilen=outfilen)
+   # example filename for CB68 CS (5-4)
+   imagename = 'images/CB68/CB68_244.936GHz_CS_joint_0.5_clean.image'
+   make_qa_plots_from_image(imagename)
+
+For developing custom plotting routines, the :class:`faust_imaging.CubeSet`
+class may be of use.
 
 
 Imaging cut-out velocity windows
