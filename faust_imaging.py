@@ -1667,6 +1667,7 @@ def make_all_qa_plots(field, ext='clean', overwrite=True):
         existing plots.
     """
     image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
+    image_paths.sort()
     for path in image_paths:
         make_qa_plots_from_image(path, overwrite=overwrite)
         gc.collect()  # free memory, just in case...
