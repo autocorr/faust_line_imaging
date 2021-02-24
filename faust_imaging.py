@@ -1449,9 +1449,16 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 # Moment maps
 ###############################################################################
 
-# use clean mask for moment map masking
-# can use with `mask` parameter without using immath
-# [0, 1, 2, 8, 9]  # m0, m1, m2, max, maxcoord
+def make_moments(imagename):
+    """
+    Parameters
+    ----------
+    imagename : str
+    """
+    # use clean mask for moment map masking
+    # can use with `mask` parameter without using immath
+    # [0, 1, 2, 8, 9]  # m0, m1, m2, max, maxcoord
+    pass
 
 
 ###############################################################################
@@ -1484,19 +1491,23 @@ class CubeSet(object):
         log_post('-- Reading primary beam')
         self.pb = self.get_chunk(stem+'.pb')
         self.shape = self.image.shape
-        self.pix_width = self.shape[1]  # square images
-        # calculate coordinate offset positions for ticks
+        self.pix_width = self.shape[1]  # for square images!
+        # Calculate coordinate offset positions for ticks.
         self.header = imhead(path, mode='list')
         self.pix_scale = abs(np.rad2deg(self.header['cdelt1']) * 60**2)  # arcsec
-        # mask images on pb profile
-        pb_mask = self.pb[0] < 0.2
-        self.image[:,pb_mask] = np.nan
-        self.residual[:,pb_mask] = np.nan
-        # calculate noise
+        # Mask image and residual arrays on PB profile threshold.
+        pb_mask = self.pb < 0.2
+        self.image[pb_mask] = np.nan
+        self.residual[pb_mask] = np.nan
+        # Calculate noise with area outside the PB threshold masked.
+        # NOTE Only computes the RMS over the first 30 channels.
         self.rms = np.nanstd(self.image[:30])
         self.nchan = self.image.shape[0]
-        # Identify channels with significant emisssion
+        # Identify channels with significant emisssion. Mask values
+        # with a sentinal value to avoid numpy NaN warning in ">".
+        self.image[np.isnan(self.image)] = -1e16
         cut = self.image > sigma * self.rms
+        self.image[self.image == -1e16] = np.nan
         self.good_mask = np.nansum(cut, axis=(1, 2)) > 0
         self.good_chan = np.argwhere(self.good_mask).flatten()
         self.ngood = self.good_chan.size
@@ -1510,8 +1521,11 @@ class CubeSet(object):
     @staticmethod
     def get_chunk(imagename):
         ia.open(imagename)
-        # drop (degenerate) stokes axis
-        chunk = ia.getchunk(dropdeg=True)
+        # Drop (degenerate) stokes axis to reduce dimensions to N=3.
+        # Save memory by reducing to 32-bit float. These arrays are only
+        # for plotting purposes anyway, so they do not need to preserve
+        # full precision.
+        chunk = ia.getchunk(dropdeg=True).astype('float32', copy=False)
         ia.close()
         ia.done()
         return chunk.transpose()
