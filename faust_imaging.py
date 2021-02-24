@@ -61,7 +61,13 @@ plt.rc('xtick', direction='in')
 plt.rc('ytick', direction='in')
 plt.ioff()  # turn off interactive GUI
 
-# Global paths
+
+###############################################################################
+# Global configuration options
+###############################################################################
+
+# Global paths. The `DATA_DIR` and `PROD_DIR` variables below are intended to
+# be modified by the user for compatibility with their specific host system.
 DATA_DIR = '/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs/'
 PROD_DIR = '/lustre/aoc/users/bsvoboda/faust/faust_alma/data/'
 IMAG_DIR = os.path.join(PROD_DIR, 'images/')
@@ -123,6 +129,10 @@ AUTOM_7M_KWARGS = {
 }
 
 
+###############################################################################
+# FAUST Target and SPW configuration
+###############################################################################
+
 class Target(object):
     def __init__(self, name, res, vsys):
         self.name = name
@@ -156,7 +166,7 @@ ALL_FIELD_NAMES = ALL_TARGETS.keys()
 
 
 class DataSet(object):
-    ms_fmt = DATA_DIR + '{0}-Setup{1}/uid___*_target_lines_self_calibrated_continuum_subtracted_aligned.ms'
+    _ms_fmt = '{0}-Setup{1}/uid___*_target_lines_self_calibrated_continuum_subtracted_aligned.ms'
     low_freqs = {1: 217, 2: 245, 3: 93}  # GHz
     high_freqs = {1: 235, 2: 262, 3: 108}  # GHz
 
@@ -199,6 +209,10 @@ class DataSet(object):
         else:
             raise ValueError('Invalid dataset descriptor: "{0}"'.format(kind))
         self.check_if_product_dirs_exist()
+
+    @property
+    def ms_fmt(self):
+        return DATA_DIR + self._ms_fmt
 
     @property
     def cell_12m(self):
@@ -1466,6 +1480,8 @@ def make_moments(imagename):
 ###############################################################################
 
 def savefig(filen, dpi=300):
+    if not os.path.exists(PLOT_DIR):
+        os.makedirs(PLOT_DIR)
     for ext in ('png', 'pdf'):
         plot_filen = os.path.join(PLOT_DIR, '{0}.{1}'.format(filen, ext))
         plt.savefig(plot_filen, dpi=dpi)
