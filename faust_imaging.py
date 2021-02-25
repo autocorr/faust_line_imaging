@@ -1463,16 +1463,83 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 # Moment maps
 ###############################################################################
 
-def make_moments(imagename):
+def make_moments_from_image(imagename, overwrite=True):
     """
+    Create moment maps for the given image. The cube is masked using the
+    associated clean mask.
+
     Parameters
     ----------
     imagename : str
+        CASA image filename ending in '.image'.
+    overwrite : bool
     """
-    # use clean mask for moment map masking
-    # can use with `mask` parameter without using immath
-    # [0, 1, 2, 8, 9]  # m0, m1, m2, max, maxcoord
-    pass
+    if not os.path.exists(MOMA_DIR):
+        os.makedirs(MOMA_DIR)
+    # File names
+    stem = os.path.splitext(imagename)[0]
+    basename = os.path.basename(stem)
+    outfile = os.path.join(MOMA_DIR, basename)
+    maskfile = '{0}.mask'.format(stem)
+    # Create a T/F mask using an LEL expression on the 1/0 mask image file.
+    lel_mask_expr = '"{0}" > 0.5'.format(maskfile)
+    # Either remove existing files or pass
+    existing_files = glob('{0}.*'.format(outfile))
+    if existing_files:
+        if overwrite:
+            for moment_file in existing_files:
+                safely_remove_file(moment_file)
+        else:
+            log_post('-- File exists, passing: {0}'.format(pdf_path))
+            return
+    # Read in mask as cube
+    #ia.open(maskfile)
+    #mdata = ia.getchunk()
+    #ia.close()
+    #ia.done()
+    # Require that at least two frequency-adjacent pixels are masked
+    # Create moment maps
+    log_post(':: Calculating moments for: {0}'.format(basename))
+    moment_ids = [
+            0,  # m0, integrated intensity
+            1,  # m1, intensity weighted mean velocity
+            2,  # m2, intensity weighted velocity dispersion
+            8,  # maximum intensity
+            9,  # frequency at maximum intensity
+            10, # minimum intensity
+            11, # frequency at minimum intensity
+    ]
+    immoments(
+            imagename=imagename,
+            moments=moment_ids,
+            mask=lel_mask_expr,
+            outfile=outfile,
+    )
+    # FIXME
+    # - PB correct the m0, max, min maps
+    # - Add the PB mask back in makemask
+    # - Export FITS files from CASA images
+
+
+def make_all_moment_maps(field, ext='clean', overwrite=True):
+    """
+    Generate all moment maps for images with the matching field ID
+    name and extension. Moment maps will be written to the directory
+    set in ``MOMA_DIR``.
+
+    Parameters
+    ----------
+    field : str
+        Target field ID name
+    ext : str
+        Image extension name, such as 'clean', 'nomask', etc.
+    overwrite : bool, default True
+        Overwrite moment maps files if they exist.
+    """
+    image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
+    image_paths.sort()
+    for path in image_paths:
+        make_moments_from_image(path, overwrite=overwrite)
 
 
 ###############################################################################
@@ -1512,7 +1579,7 @@ class CubeSet(object):
         self.header = imhead(path, mode='list')
         self.pix_scale = abs(np.rad2deg(self.header['cdelt1']) * 60**2)  # arcsec
         # Mask image and residual arrays on PB profile threshold.
-        pb_mask = self.pb < 0.2
+        pb_mask = self.pb < PBLIMIT
         self.image[pb_mask] = np.nan
         self.residual[pb_mask] = np.nan
         # Calculate noise with area outside the PB threshold masked.
