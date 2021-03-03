@@ -743,6 +743,7 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     stats = imstat(imagename=imagename, axes=[0, 1], chans=chans)
     mad_arr = stats['medabsdevmed']
     rms = MAD_TO_RMS * np.nanmedian(mad_arr)
+    log_post('-- RMS: {0}'.format(rms))
     return rms
 
 
@@ -1463,7 +1464,7 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 # Moment maps
 ###############################################################################
 
-def make_moments_from_image(imagename, overwrite=True):
+def make_moments_from_image(imagename, vwin=5, overwrite=True):
     """
     Create moment maps for the given image. The cube is masked using the
     associated clean mask.
@@ -1472,52 +1473,80 @@ def make_moments_from_image(imagename, overwrite=True):
     ----------
     imagename : str
         CASA image filename ending in '.image'.
+    vwin : number
+        Velocity window (half-width) to use for estimating moments over
+        relative to the systemic velocity.
     overwrite : bool
     """
     if not os.path.exists(MOMA_DIR):
         os.makedirs(MOMA_DIR)
     # File names
     stem = os.path.splitext(imagename)[0]
+    pbname = '{0}.pb'.format(stem)
+    maskname = '{0}.mask'.format(stem)
+    commonname = '{0}.image.common'.format(stem)
     basename = os.path.basename(stem)
     outfile = os.path.join(MOMA_DIR, basename)
-    maskfile = '{0}.mask'.format(stem)
+    # The `ia.moments` task must smooth to a common resolution before
+    # computing the moments. To avoid doing this multiple times, process
+    # once and store the file.
+    if os.path.exists(commonname):
+        log_post('-- Using commonbeam image on disk: {0}'.format(commonname))
+    else:
+        smooth_cube_to_common_beam(imagename)
+        copy_pb_mask(commonname, pbname)
     # Create a T/F mask using an LEL expression on the 1/0 mask image file.
-    lel_mask_expr = '"{0}" > 0.5'.format(maskfile)
-    # Either remove existing files or pass
-    existing_files = glob('{0}.*'.format(outfile))
-    if existing_files:
-        if overwrite:
-            for moment_file in existing_files:
-                safely_remove_file(moment_file)
-        else:
-            log_post('-- File exists, passing: {0}'.format(pdf_path))
-            return
-    # Read in mask as cube
-    #ia.open(maskfile)
-    #mdata = ia.getchunk()
-    #ia.close()
-    #ia.done()
-    # Require that at least two frequency-adjacent pixels are masked
-    # Create moment maps
+    lel_mask_expr = '"{0}" > 0.5'.format(maskname)
+    # Create moment maps.
     log_post(':: Calculating moments for: {0}'.format(basename))
-    moment_ids = [
-            0,  # m0, integrated intensity
-            1,  # m1, intensity weighted mean velocity
-            2,  # m2, intensity weighted velocity dispersion
-            8,  # maximum intensity
-            9,  # frequency at maximum intensity
-            10, # minimum intensity
-            11, # frequency at minimum intensity
-    ]
-    immoments(
-            imagename=imagename,
-            moments=moment_ids,
-            mask=lel_mask_expr,
-            outfile=outfile,
+    rms = calc_rms_from_image(imagename)
+    field = imhead(imagename, mode='get', hdkey='object')
+    vsys = ALL_TARGETS[field].vsys
+    # Use all emission within clean mask for m0 and extrema.
+    # Moment IDs:
+    #    0   moment-0, integrated intensity
+    #    8   maximum intensity
+    #    9   frequency at maximum intensity
+    #   10   minimum intensity
+    #   11   frequency at minimum intensity
+    ia.open(commonname)
+    imshape = ia.shape()
+    region = (
+            'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(imshape[0],imshape[1]) +
+            'range=[{0:.2f}km/s,{1:.2f}km/s]'.format(vsys-vwin, vsys+vwin)
     )
+    ia.moments(
+            moments=[0,8,9,10,11],
+            mask=lel_mask_expr,
+            region=region,
+            outfile=outfile,
+            overwrite=True,
+    ).done()
+    # Apply significance thresholds to m1/m2. Apply hanning smoothing to the
+    # spectral axis to help mitigate single-channel noise-spikes.
+    # Moment IDs:
+    #    1   moment-1, intensity weighted mean velocity
+    #    2   moment-2, intensity weighted velocity dispersion
+    ia.moments(
+            moments=[1],
+            mask=lel_mask_expr,
+            excludepix=[3*rms],
+            region=region,
+            outfile=outfile+'.weighted_coord',
+            overwrite=overwrite,
+    ).done()
+    ia.moments(
+            moments=[2],
+            mask=lel_mask_expr,
+            excludepix=[4*rms],
+            region=region,
+            outfile=outfile+'.weighted_dispersion_coord',
+            overwrite=overwrite,
+    ).done()
+    ia.close()
+    ia.done()
     # FIXME
     # - PB correct the m0, max, min maps
-    # - Add the PB mask back in makemask
     # - Export FITS files from CASA images
 
 
