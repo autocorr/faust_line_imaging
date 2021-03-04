@@ -1575,10 +1575,18 @@ def make_all_moment_maps(field, ext='clean', overwrite=True):
 # Quality assurance plots
 ###############################################################################
 
-def savefig(filen, dpi=300):
+def savefig(filen, dpi=300, plot_exts=('png', 'pdf')):
     if not os.path.exists(PLOT_DIR):
         os.makedirs(PLOT_DIR)
-    for ext in ('png', 'pdf'):
+    fig = plt.gcf()
+    for ext in plot_exts:
+        # NOTE The GTKAgg backend hits a 16-bit signed integer overflow limit
+        # at figure dimensions of approximately 109.23 inches in width or
+        # height. This only affects the printing of PNG files, as PDF, PS, and
+        # SVG files use different backends that are not limited in this way.
+        if ext == 'png' and fig.get_figheight() > 108:
+            log_post('-- Skipping PNG, image too large for backend', priority='WARN')
+            continue
         plot_filen = os.path.join(PLOT_DIR, '{0}.{1}'.format(filen, ext))
         plt.savefig(plot_filen, dpi=dpi)
     log_post('-- figure saved for: {0}'.format(plot_filen))
@@ -1743,6 +1751,7 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
         ax.set_visible(False)
     outfilen_ext = '{0}_{1}'.format(outfilen, kind)
     savefig(outfilen_ext)
+    plt.close(fig)
 
 
 def make_qa_plots_from_image(path, overwrite=True):
