@@ -1306,13 +1306,15 @@ class ImageConfig(object):
         check_max_residual(imagebase, sigma=5.5)
         primary_beam_correct(imagebase)
         # smooth to common beam and export to FITS
-        im_name = imagebase + '.image.pbcor'
         pb_name = imagebase + '.pb'
-        cm_name = im_name   + '.common'
-        smooth_cube_to_common_beam(im_name)
-        copy_pb_mask(cm_name, pb_name)
+        for im_ext in ('.image', '.image.pbcor'):
+            im_name = imagebase + im_ext
+            cm_name = im_name + '.common'
+            smooth_cube_to_common_beam(im_name)
+            copy_pb_mask(cm_name, pb_name)
         if make_fits:
-            export_fits(cm_name)
+            image_to_export = imagebase + '.image.pbcor.common'
+            export_fits(image_to_export)
 
     def run_pipeline(self, ext='clean'):
         """
@@ -1530,7 +1532,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     #    2   moment-2, intensity weighted velocity dispersion
     ia.moments(
             moments=[1],
-            #mask=lel_mask_expr,
+            mask=lel_mask_expr,
             excludepix=[3*rms/2],
             region=region,
             smoothaxes=[3],
@@ -1541,7 +1543,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     ).done()
     ia.moments(
             moments=[2],
-            #mask=lel_mask_expr,
+            mask=lel_mask_expr,
             excludepix=[4*rms/2],
             region=region,
             smoothaxes=[3],
