@@ -629,6 +629,7 @@ def concat_parallel_image(imagename):
     )
     im_tool.close()
     ia.done()
+    ia.close()
     replace_existing_file_with_new(imagename, outfile)
 
 
@@ -1529,22 +1530,28 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     #    2   moment-2, intensity weighted velocity dispersion
     ia.moments(
             moments=[1],
-            mask=lel_mask_expr,
-            excludepix=[3*rms],
+            #mask=lel_mask_expr,
+            excludepix=[3*rms/2],
             region=region,
+            smoothaxes=[3],
+            smoothtypes=['hanning'],
+            smoothwidths=[3],
             outfile=outfile+'.weighted_coord',
             overwrite=overwrite,
     ).done()
     ia.moments(
             moments=[2],
-            mask=lel_mask_expr,
-            excludepix=[4*rms],
+            #mask=lel_mask_expr,
+            excludepix=[4*rms/2],
             region=region,
+            smoothaxes=[3],
+            smoothtypes=['hanning'],
+            smoothwidths=[3],
             outfile=outfile+'.weighted_dispersion_coord',
             overwrite=overwrite,
     ).done()
-    ia.close()
     ia.done()
+    ia.close()
     # FIXME
     # - PB correct the m0, max, min maps
     # - Export FITS files from CASA images
@@ -1575,7 +1582,20 @@ def make_all_moment_maps(field, ext='clean', overwrite=True):
 # Quality assurance plots
 ###############################################################################
 
-def savefig(filen, dpi=300, plot_exts=('png', 'pdf')):
+def savefig(filen, dpi=300, plot_exts=('png', 'pdf'), close=True):
+    """
+    Save the figure instance to a file.
+
+    Parameters
+    ----------
+    filen : str
+        File name to write to, excluding the extension (e.g., ".pdf").
+    dpi : number
+    plot_exts : Iterable
+        Extensions to create plots for, e.g., "pdf", "svg", "png", "eps", "ps".
+    close : bool
+        Close figure instance when finished plotting.
+    """
     if not os.path.exists(PLOT_DIR):
         os.makedirs(PLOT_DIR)
     fig = plt.gcf()
@@ -1590,53 +1610,32 @@ def savefig(filen, dpi=300, plot_exts=('png', 'pdf')):
         plot_filen = os.path.join(PLOT_DIR, '{0}.{1}'.format(filen, ext))
         plt.savefig(plot_filen, dpi=dpi)
     log_post('-- figure saved for: {0}'.format(plot_filen))
-    plt.close('all')
+    if close:
+        plt.close('all')
 
 
 class CubeSet(object):
     def __init__(self, path, sigma=6):
         self.path = path
         self.sigma = sigma
-        # Read in images and calculate noise
+        # Setup paths and calculate noise
         stem = os.path.splitext(path)[0]
         self.stem = stem
         self.basename = os.path.basename(stem)
-        log_post('-- Reading in data cubes for: {0}'.format(self.basename))
-        log_post('-- Reading image')
-        self.image = self.get_chunk(stem+'.image')
-        log_post('-- Reading residual')
-        self.residual = self.get_chunk(stem+'.residual')
-        log_post('-- Reading mask')
-        self.mask = self.get_chunk(stem+'.mask')
-        log_post('-- Reading primary beam')
-        self.pb = self.get_chunk(stem+'.pb')
-        self.shape = self.image.shape
-        self.pix_width = self.shape[1]  # for square images!
+        self.rms = calc_rms_from_image(path)
         # Calculate coordinate offset positions for ticks.
         self.header = imhead(path, mode='list')
         self.pix_scale = abs(np.rad2deg(self.header['cdelt1']) * 60**2)  # arcsec
-        # Mask image and residual arrays on PB profile threshold.
-        pb_mask = self.pb < PBLIMIT
-        self.image[pb_mask] = np.nan
-        self.residual[pb_mask] = np.nan
-        # Calculate noise with area outside the PB threshold masked.
-        # NOTE Only computes the RMS over the first 30 channels.
-        self.rms = np.nanstd(self.image[:30])
-        self.nchan = self.image.shape[0]
-        # Identify channels with significant emisssion. Mask values
-        # with a sentinal value to avoid numpy NaN warning in ">".
-        self.image[np.isnan(self.image)] = -1e16
-        cut = self.image > sigma * self.rms
-        self.image[self.image == -1e16] = np.nan
-        self.good_mask = np.nansum(cut, axis=(1, 2)) > 0
-        self.good_chan = np.argwhere(self.good_mask).flatten()
-        self.ngood = self.good_chan.size
-
-    def __del__(self):
-        del self.image
-        del self.residual
-        del self.mask
-        del self.pb
+        # Image size properties
+        shape = self.header['shape']
+        assert shape[0] == shape[1]  # is square image
+        self.shape = shape
+        self.pix_width = shape[0]
+        self.nchan = shape[3]
+        # Identify channels with significant emisssion.
+        good_chan = self.get_good_channels()
+        self.good_chan = good_chan
+        self.ngood = good_chan.size
 
     @staticmethod
     def get_chunk(imagename):
@@ -1646,17 +1645,92 @@ class CubeSet(object):
         # for plotting purposes anyway, so they do not need to preserve
         # full precision.
         chunk = ia.getchunk(dropdeg=True).astype('float32', copy=False)
-        ia.close()
         ia.done()
+        ia.close()
         return chunk.transpose()
+
+    def get_plane_from_image(self, filen, ix):
+        """
+        NOTE The arrays returned by ``ia.getregion`` do not appear to have
+        their references counted correctly and are not properly removed by the
+        Python Garbage Collector.  The array returned by this function must be
+        "del" unreferenced manually in order for them to be properly removed.
+
+        Parameters
+        ----------
+        filen : str
+            CASA image path, e.g. "images/CB68/CB68_<...>_clean.mask"
+        ix : int
+            Channel index number (zero indexed).
+
+        Returns
+        -------
+        plane : ndarray
+            2D image plane of the selected channel.
+        """
+        # NOTE The `par.region` "range" syntax is inclusive for the upper and
+        # lower bounds. Thus if both lower and upper bounds are equal, a single
+        # channel slice will be returned (e.g., range=[5chan,5chan] returns a
+        # slice of just channel 5).  However, for an unknown reason, this
+        # returns the whole cube for range=[0chan,0chan]. For this special
+        # case, use range=[0,1] then take a slice for the first value.
+        if ix == 0:
+            ix_lo, ix_hi = 0, 1
+        else:
+            ix_lo, ix_hi = ix, ix
+        xpix, ypix = self.shape[0], self.shape[1]
+        # Note that the range is inclusive in the region format, and thus this
+        # selects one channel. The channel index number is one indexed.
+        region = (
+                'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(xpix, ypix) +
+                'range=[{0}chan,{1}chan]'.format(ix_lo, ix_hi)
+        )
+        ia.open(filen)
+        # `dropdeg` removes degenerate axes, in this case frequency and Stokes.
+        # The transpose converts the native Fortran ordering to C ordering.
+        plane = ia.getregion(region, dropdeg=True)
+        plane = plane.astype('float32').transpose()
+        ia.done()
+        ia.close()
+        if ix == 0:
+            return plane[...,0]
+        else:
+            return plane
+
+    def get_image_planes(self, ix):
+        stem = self.stem
+        im = self.get_plane_from_image(stem+'.image', ix)
+        rs = self.get_plane_from_image(stem+'.residual', ix)
+        ma = self.get_plane_from_image(stem+'.mask', ix)
+        pb = self.get_plane_from_image(stem+'.pb', ix)
+        # Mask the image and residual files with NaNs outside of the primary
+        # beam limit.
+        pbmask = pb < PBLIMIT
+        im[pbmask] = np.nan
+        rs[pbmask] = np.nan
+        return im, rs, ma, pb
 
     def iter_planes(self):
         for ix in self.good_chan:
-            im = self.image[ix]
-            rs = self.residual[ix]
-            ma = self.mask[ix]
-            pb = self.pb[ix]
-            yield im, rs, ma, pb, ix
+            planes = self.get_image_planes(ix)
+            yield planes, ix
+
+    def get_good_channels(self):
+        stem = self.stem
+        threshold = self.sigma * self.rms
+        good_chans = []
+        log_post('-- Identifying channels with significant emission')
+        for ix in range(self.nchan):
+            im = self.get_plane_from_image(stem+'.image', ix)
+            pb = self.get_plane_from_image(stem+'.pb', ix)
+            # Use a large sentinel value to avoid NaN warning from numpy in the
+            # ">" operation.
+            im[pb < PBLIMIT] = -1e16
+            if np.any(im > threshold):
+                good_chans.append(ix)
+            del im, pb
+        log_post('-- channels identified: {0}'.format(len(good_chans)))
+        return np.array(good_chans)
 
     def calc_tick_loc(self, ang_tick=5):
         """
@@ -1714,8 +1788,8 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     figsize = (ncols * subplot_size, nrows * subplot_size)
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex=True,
             sharey=True, figsize=figsize)
-    for ax, planes in zip(axes.flat, cset.iter_planes()):
-        image, residual, mask, pbeam, chan_ix = planes
+    for ax, (planes, chan_ix) in zip(axes.flat, cset.iter_planes()):
+        image, residual, mask, pbeam = planes
         data = image if kind == 'image' else residual
         # show colorscale of image data
         ax.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
@@ -1729,7 +1803,7 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
             #        linestyles='solid', linewidths=0.4)
             ax.contourf(data, levels=high_snr_levels, cmap=plt.cm.rainbow)
         # show contour for the clean mask
-        if mask.any() > 0:
+        if mask.any():
             ax.contour(mask, level=[0.5], colors=mask_cont_color,
                     linestyles='solid', linewidths=0.2)
         # show nice channel label in the top-right corner
@@ -1742,6 +1816,7 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
         ax.set_yticks(tick_pos)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
+        del image, residual, mask, pbeam
     # zoom the window to crop out some of the PB NaNs around the edges
     ax.set_xlim(0.12*cset.pix_width, 0.88*cset.pix_width)
     ax.set_ylim(0.12*cset.pix_width, 0.88*cset.pix_width)
@@ -1751,7 +1826,6 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
         ax.set_visible(False)
     outfilen_ext = '{0}_{1}'.format(outfilen, kind)
     savefig(outfilen_ext)
-    plt.close(fig)
 
 
 def make_qa_plots_from_image(path, overwrite=True):
