@@ -693,6 +693,25 @@ def primary_beam_correct(imagebase):
     )
 
 
+def hanning_smooth_image(imagename, overwrite=True):
+    """
+    Hanning smooth an image. Produces a new file with the extension ".hanning".
+
+    Parameters
+    ----------
+    filen : str
+    overwrite : bool
+    """
+    log_post(':: Creating Hanning smoothed image')
+    outname = '{0}.hanning'.format(imagename)
+    ia.open(imagename)
+    ia.hanning(
+            outname, drop=False, dmethod='mean', overwrite=overwrite,
+    ).done()
+    ia.done()
+    ia.close()
+
+
 def smooth_cube_to_common_beam(imagename):
     """
     Use the `imsmooth` task to convert a cube with per-plane beams into one
@@ -1312,6 +1331,7 @@ class ImageConfig(object):
             cm_name = im_name + '.common'
             smooth_cube_to_common_beam(im_name)
             copy_pb_mask(cm_name, pb_name)
+        hanning_smooth_image(imagebase+'.image.common')
         if make_fits:
             image_to_export = imagebase + '.image.pbcor.common'
             export_fits(image_to_export)
@@ -1488,6 +1508,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     pbname = '{0}.pb'.format(stem)
     maskname = '{0}.mask'.format(stem)
     commonname = '{0}.image.common'.format(stem)
+    hannname = '{0}.image.common.hanning'.format(stem)
     basename = os.path.basename(stem)
     outfile = os.path.join(MOMA_DIR, basename)
     # The `ia.moments` task must smooth to a common resolution before
@@ -1498,8 +1519,11 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     else:
         smooth_cube_to_common_beam(imagename)
         copy_pb_mask(commonname, pbname)
-    # Create a T/F mask using an LEL expression on the 1/0 mask image file.
-    lel_mask_expr = '"{0}" > 0.5'.format(maskname)
+    # Calculate Hanning smoothed map for use with higher-order moments.
+    if os.path.exists(hannname):
+        log_post('-- Using hanning smoothed image on disk: {0}'.format(hannname))
+    else:
+        hanning_smooth_image(commonname)
     # Create moment maps.
     log_post(':: Calculating moments for: {0}'.format(basename))
     rms = calc_rms_from_image(imagename)
@@ -1516,11 +1540,13 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     imshape = ia.shape()
     region = (
             'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(imshape[0],imshape[1]) +
-            'range=[{0:.2f}km/s,{1:.2f}km/s]'.format(vsys-vwin, vsys+vwin)
+            'range=[{0:.3f}km/s,{1:.3f}km/s]'.format(vsys-vwin, vsys+vwin)
     )
+    # Create a T/F mask using an LEL expression on the 1/0 clean mask.
+    lel_expr_mask = '"{0}" > 0.5'.format(maskname)
     ia.moments(
             moments=[0,8,9,10,11],
-            mask=lel_mask_expr,
+            mask=lel_expr_mask,
             region=region,
             outfile=outfile,
             overwrite=True,
@@ -1530,36 +1556,51 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     # Moment IDs:
     #    1   moment-1, intensity weighted mean velocity
     #    2   moment-2, intensity weighted velocity dispersion
+    # Factor of 1.305 reduction in RMS from unsmoothed to Hanning smoothed.
+    lel_expr_hann_fmt = '{0} && "{1}" > {{sigma}}*{rms}/1.305'.format(
+            lel_expr_mask, hannname, rms=rms,
+    )
     ia.moments(
             moments=[1],
-            mask=lel_mask_expr,
-            excludepix=[3*rms/2],
+            mask=lel_expr_hann_fmt.format(sigma=3),
             region=region,
-            smoothaxes=[3],
-            smoothtypes=['hanning'],
-            smoothwidths=[3],
             outfile=outfile+'.weighted_coord',
             overwrite=overwrite,
     ).done()
     ia.moments(
             moments=[2],
-            mask=lel_mask_expr,
-            excludepix=[4*rms/2],
+            mask=lel_expr_hann_fmt.format(sigma=4),
             region=region,
-            smoothaxes=[3],
-            smoothtypes=['hanning'],
-            smoothwidths=[3],
             outfile=outfile+'.weighted_dispersion_coord',
             overwrite=overwrite,
     ).done()
     ia.done()
     ia.close()
-    # FIXME
-    # - PB correct the m0, max, min maps
-    # - Export FITS files from CASA images
+    # Retrieve plane of the primary beam near the systemic velocity
+    ia.open(pbname)
+    pbcube = ia.getregion(region, dropdeg=True).transpose()
+    ia.done()
+    ia.close()
+    ix_center = pbcube.shape[0] // 2
+    pbplane = pbcube[ix_center]
+    # Primary beam correct the relevant moment maps
+    for ext in ('integrated', 'maximum'):
+        momentname = '{0}.{1}'.format(outfile, ext)
+        impbcor(
+                imagename=momentname,
+                pbimage=pbplane,
+                outfile=momentname+'.pbcor',
+                overwrite=overwrite,
+        )
+    # Export the CASA images to FITS files
+    export_moment_exts = ('integrated.pbcor', 'maximum.pbcor',
+            'weighted_coord', 'weighted_dispersion_coord')
+    for ext in export_moment_exts:
+        momentname = '{0}.{1}'.format(outfile, ext)
+        export_fits(momentname, velocity=True, overwrite=overwrite)
 
 
-def make_all_moment_maps(field, ext='clean', overwrite=True):
+def make_all_moment_maps(field, ext='clean', vwin=5, overwrite=True):
     """
     Generate all moment maps for images with the matching field ID
     name and extension. Moment maps will be written to the directory
@@ -1571,13 +1612,16 @@ def make_all_moment_maps(field, ext='clean', overwrite=True):
         Target field ID name
     ext : str
         Image extension name, such as 'clean', 'nomask', etc.
+    vwin : number
+        Velocity window (half-width) to use for estimating moments over
+        relative to the systemic velocity.
     overwrite : bool, default True
         Overwrite moment maps files if they exist.
     """
-    image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
+    image_paths = glob('images/{0}/{0}_*_{1}.image'.format(field, ext))
     image_paths.sort()
     for path in image_paths:
-        make_moments_from_image(path, overwrite=overwrite)
+        make_moments_from_image(path, vwin=vwin, overwrite=overwrite)
 
 
 ###############################################################################

@@ -310,3 +310,25 @@ SPW of interest, these parameters can be relaxed to increase performance:
    config.cyclefactor = 1.0  # default 2.0
    config.run_pipeline()
 
+
+Creating moment maps
+--------------------
+Moment maps and other point estimators (e.g., maximum) may be generated
+from the data using the :func:`faust_imaging.make_all_moment_maps` function for
+all of the SPWs of a target or :func:`faust_imaging.make_moments_from_image`
+for a single SPW of a target.
+
+.. code-block:: python
+
+   # Create moment maps for all SPWs. The `vwin` parameter sets the velocity
+   # window half-width in km/s to calculate the moment over.
+   make_all_moment_maps('CB68', ext='clean', vwin=5)
+   # Generate a single set of moment maps
+   imagename = 'images/CB68/CB68_244.936GHz_CS_joint_0.5_clean.image'
+   make_moments_from_image(imagename, vwin=5)
+
+The moments are calculated by masking pixels which are not (a) in the clean
+mask and (b) do not meet a significance cut on a Hanning smoothed cube. The
+moments are computed using the unsmoothed data.
+
+
