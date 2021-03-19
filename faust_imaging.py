@@ -1551,7 +1551,6 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     ).done()
     ia.moments(
             moments=[8],
-            includepix=[0, 1e9],
             region=region,
             outfile=outfile+'.maximum',
             overwrite=True,
