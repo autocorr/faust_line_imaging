@@ -328,9 +328,11 @@ class Spw(object):
         nchan : int
             Total number of channels (before flagging).
         chan_width : number
-            Channel width in kHz (TOPO).
+            Channel width in TOPO frame.
+            **units**: kHz.
         tot_bw : number
-            Total bandwidth in MHz (TOPO).
+            Total bandwidth in TOPO frame.
+            **units**: MHz
         """
         assert setup in (1, 2, 3)
         self.setup = setup
@@ -1499,6 +1501,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     vwin : number
         Velocity window (half-width) to use for estimating moments over
         relative to the systemic velocity.
+        **units**: km/s
     overwrite : bool
     """
     if not os.path.exists(MOMA_DIR):
@@ -1529,26 +1532,45 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     rms = calc_rms_from_image(imagename)
     field = imhead(imagename, mode='get', hdkey='object')
     vsys = ALL_TARGETS[field].vsys
-    # Use all emission within clean mask for m0 and extrema.
+    # Use all emission within the velocity window for m0 and extrema.
     # Moment IDs:
     #    0   moment-0, integrated intensity
     #    8   maximum intensity
-    #    9   frequency at maximum intensity
-    #   10   minimum intensity
-    #   11   frequency at minimum intensity
     ia.open(commonname)
     imshape = ia.shape()
     region = (
             'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(imshape[0],imshape[1]) +
             'range=[{0:.3f}km/s,{1:.3f}km/s]'.format(vsys-vwin, vsys+vwin)
     )
-    # Create a T/F mask using an LEL expression on the 1/0 clean mask.
-    lel_expr_mask = '"{0}" > 0.5'.format(maskname)
     ia.moments(
-            moments=[0,8,9,10,11],
-            mask=lel_expr_mask,
+            moments=[0],
+            includepix=[0, 1e9],
             region=region,
-            outfile=outfile,
+            outfile=outfile+'.integrated',
+            overwrite=True,
+    ).done()
+    ia.moments(
+            moments=[8],
+            includepix=[0, 1e9],
+            region=region,
+            outfile=outfile+'.maximum',
+            overwrite=True,
+    ).done()
+    # Use all emission within clean mask for m0 and extrema.
+    # Create a T/F mask using an LEL expression on the 1/0 clean mask.
+    lel_expr_clean = '"{0}" > 0.5'.format(maskname)
+    ia.moments(
+            moments=[0],
+            mask=lel_expr_clean,
+            region=region,
+            outfile=outfile+'.integrated_cmask',
+            overwrite=True,
+    ).done()
+    ia.moments(
+            moments=[8],
+            mask=lel_expr_clean,
+            region=region,
+            outfile=outfile+'.maximum_cmask',
             overwrite=True,
     ).done()
     # Apply significance thresholds to m1/m2. Apply hanning smoothing to the
@@ -1558,7 +1580,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     #    2   moment-2, intensity weighted velocity dispersion
     # Factor of 1.305 reduction in RMS from unsmoothed to Hanning smoothed.
     lel_expr_hann_fmt = '{0} && "{1}" > {{sigma}}*{rms}/1.305'.format(
-            lel_expr_mask, hannname, rms=rms,
+            lel_expr_clean, hannname, rms=rms,
     )
     ia.moments(
             moments=[1],
@@ -1584,7 +1606,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     ix_center = pbcube.shape[0] // 2
     pbplane = pbcube[ix_center]
     # Primary beam correct the relevant moment maps
-    for ext in ('integrated', 'maximum'):
+    for ext in ('integrated', 'integrated_cmask', 'maximum', 'maximum_cmask'):
         momentname = '{0}.{1}'.format(outfile, ext)
         impbcor(
                 imagename=momentname,
@@ -1593,8 +1615,9 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
                 overwrite=overwrite,
         )
     # Export the CASA images to FITS files
-    export_moment_exts = ('integrated.pbcor', 'maximum.pbcor',
-            'weighted_coord', 'weighted_dispersion_coord')
+    export_moment_exts = ('integrated.pbcor', 'integrated_cmask.pbcor',
+            'maximum.pbcor', 'maximum_cmask.pbcor', 'weighted_coord',
+            'weighted_dispersion_coord')
     for ext in export_moment_exts:
         momentname = '{0}.{1}'.format(outfile, ext)
         export_fits(momentname, velocity=True, overwrite=overwrite)
@@ -1615,6 +1638,7 @@ def make_all_moment_maps(field, ext='clean', vwin=5, overwrite=True):
     vwin : number
         Velocity window (half-width) to use for estimating moments over
         relative to the systemic velocity.
+        **units**: km/s
     overwrite : bool, default True
         Overwrite moment maps files if they exist.
     """
