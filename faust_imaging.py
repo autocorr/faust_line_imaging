@@ -1546,13 +1546,13 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
             moments=[0],
             includepix=[0, 1e9],
             region=region,
-            outfile=outfile+'.integrated',
+            outfile=outfile+'.mom0',
             overwrite=True,
     ).done()
     ia.moments(
             moments=[8],
             region=region,
-            outfile=outfile+'.maximum',
+            outfile=outfile+'.max',
             overwrite=True,
     ).done()
     # Use all emission within clean mask for m0 and extrema.
@@ -1562,14 +1562,14 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
             moments=[0],
             mask=lel_expr_clean,
             region=region,
-            outfile=outfile+'.integrated_cmask',
+            outfile=outfile+'.mom0_cmask',
             overwrite=True,
     ).done()
     ia.moments(
             moments=[8],
             mask=lel_expr_clean,
             region=region,
-            outfile=outfile+'.maximum_cmask',
+            outfile=outfile+'.max_cmask',
             overwrite=True,
     ).done()
     # Apply significance thresholds to m1/m2. Apply hanning smoothing to the
@@ -1585,14 +1585,14 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
             moments=[1],
             mask=lel_expr_hann_fmt.format(sigma=3),
             region=region,
-            outfile=outfile+'.weighted_coord',
+            outfile=outfile+'.mom1',
             overwrite=overwrite,
     ).done()
     ia.moments(
             moments=[2],
             mask=lel_expr_hann_fmt.format(sigma=4),
             region=region,
-            outfile=outfile+'.weighted_dispersion_coord',
+            outfile=outfile+'.mom2',
             overwrite=overwrite,
     ).done()
     ia.done()
@@ -1605,7 +1605,7 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     ix_center = pbcube.shape[0] // 2
     pbplane = pbcube[ix_center]
     # Primary beam correct the relevant moment maps
-    for ext in ('integrated', 'integrated_cmask', 'maximum', 'maximum_cmask'):
+    for ext in ('mom0', 'mom0_cmask', 'max', 'max_cmask'):
         momentname = '{0}.{1}'.format(outfile, ext)
         impbcor(
                 imagename=momentname,
@@ -1614,9 +1614,8 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
                 overwrite=overwrite,
         )
     # Export the CASA images to FITS files
-    export_moment_exts = ('integrated.pbcor', 'integrated_cmask.pbcor',
-            'maximum.pbcor', 'maximum_cmask.pbcor', 'weighted_coord',
-            'weighted_dispersion_coord')
+    export_moment_exts = ('mom0.pbcor', 'mom0_cmask.pbcor', 'max.pbcor',
+            'max_cmask.pbcor', 'mom1', 'mom2')
     for ext in export_moment_exts:
         momentname = '{0}.{1}'.format(outfile, ext)
         export_fits(momentname, velocity=True, overwrite=overwrite)
