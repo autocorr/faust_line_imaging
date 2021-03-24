@@ -1298,7 +1298,7 @@ class ImageConfig(object):
         else:
             delete_all_extensions(imagename)
         if not restart and mask_method == 'seed+multithresh':
-            if parallel:
+            if self.parallel:
                 # FIXME The mask generated is a "serial" image which is not
                 # read correctly, and subsequently ignored, by tclean run in
                 # parallel. It appears the image must be converted to a
