@@ -909,6 +909,8 @@ class ImageConfig(object):
         """
         Configuration object for `tclean` related custom tasks. Parameters
         specify deconvolution and image-cube properties such as the weighting.
+        See the docstring for `.from_name` for more complete parameter
+        descriptions.
 
         Parameters
         ----------
@@ -916,6 +918,22 @@ class ImageConfig(object):
         spw : Spw
         fullcube : bool
         weighting : str, number
+
+        Attributes
+        ----------
+        scales : Iterable
+            List of scales in pixels to be used for multi-scale clean. Will be
+            passed to the ``scales`` keyword argument in `tclean`.
+        mask_ang_scales : Iterable
+            FWHM sizes in arcsec for Gaussian smoothing kernels used in
+            :meth:`faust_imaging.ImageConfig.clean_line_nomask`.
+        autom_kwargs : dict
+            Auto-multithresh keyword arguments passed to `tclean`.
+        smallscalebias : number
+        gain : number
+        cyclefactor : number
+        parallel : bool
+            Is MPI enabled in CASA?
         """
         assert dset.setup == spw.setup
         self.dset = dset
@@ -1228,8 +1246,11 @@ class ImageConfig(object):
                 ``"seed+multithresh"`` generate initial mask from free clean
                 and then use auto-multithresh for automatic masking.
 
-                ``"taper"`` use mask generated from a separate tapered run;
-                requires re-implementation.
+                ``"fixed"`` use the existing clean mask but keep it fixed and
+                do not apply auto-multithresh.
+
+                ``"taper"`` use mask generated from a separate tapered run.
+                Generating the tapared masks requires re-implementation.
 
         sigma : number
             Threshold in standard deviations of the noise to clean down to within
@@ -1252,9 +1273,17 @@ class ImageConfig(object):
         threshold = format_rms(self.rms, sigma=sigma)
         # channel ranges: windowed or common coverage
         start, nchan = self.selected_start_nchan
-        # masking method, auto-multithresh or mask from tapered run
+        # masking method, auto-multithresh or user masks
         if mask_method == 'auto-multithresh' or mask_method == 'seed+multithresh':
             mask_kwargs = self.autom_kwargs
+        elif mask_method == 'existing':
+            default_mask = '{0}.mask'.format(imagename)
+            if not os.path.exists(default_mask):
+                raise RuntimeError('Mask does not exist for mask_method="existing": {0}'.format(default_mask))
+            mask_kwargs = {
+                    'usemask': 'user',
+                    'mask': default_mask,
+                    }
         elif mask_method == 'taper':
             # user supplied mask from seperate tapering run
             mask_kwargs = {
