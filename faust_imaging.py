@@ -27,6 +27,7 @@ import os
 import sys
 import shutil
 import datetime
+import warnings
 from glob import glob
 from copy import deepcopy
 from collections import (OrderedDict, Iterable)
@@ -239,7 +240,14 @@ class DataSet(object):
 
     @property
     def gridder(self):
-        return 'mosaic' if self.kind == 'joint' else 'standard'
+        if self.setup == 3:
+            return 'standard'
+        elif self.setup in (1, 2) and self.kind == 'joint':
+            return 'mosaic'
+        elif self.setup in (1, 2) and self.kind in ('7m', '12m'):
+            return 'standard'
+        else:
+            raise ValueError('Invalid setup, kind: ({0}, {1})'.format(self.setup, self.kind))
 
     @property
     def pblimit(self):
@@ -1518,7 +1526,8 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 # Moment maps
 ###############################################################################
 
-def make_moments_from_image(imagename, vwin=5, overwrite=True):
+def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
+        overwrite=True):
     """
     Create moment maps for the given image. The cube is masked using the
     associated clean mask.
@@ -1527,6 +1536,10 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     ----------
     imagename : str
         CASA image filename ending in '.image'.
+    m1_sigma : number
+        Multiple of the RMS to threshold the Moment 1 data on.
+    m2_sigma : number
+        Multiple of the RMS to threshold the Moment 2 data on.
     vwin : number
         Velocity window (half-width) to use for estimating moments over
         relative to the systemic velocity.
@@ -1612,14 +1625,14 @@ def make_moments_from_image(imagename, vwin=5, overwrite=True):
     )
     ia.moments(
             moments=[1],
-            mask=lel_expr_hann_fmt.format(sigma=3),
+            mask=lel_expr_hann_fmt.format(sigma=m1_sigma),
             region=region,
             outfile=outfile+'.mom1',
             overwrite=overwrite,
     ).done()
     ia.moments(
             moments=[2],
-            mask=lel_expr_hann_fmt.format(sigma=4),
+            mask=lel_expr_hann_fmt.format(sigma=m2_sigma),
             region=region,
             outfile=outfile+'.mom2',
             overwrite=overwrite,
@@ -1864,7 +1877,7 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     log_post(':: Making QA plots for: {0}'.format(cset.stem))
     # configuration options specific to image or residual plots
     if kind == 'image':
-        cmap = plt.cm.afmhot if kind == 'image' else plt.cm.RdBu
+        cmap = plt.cm.afmhot
         mask_cont_color = 'cyan'
         vmin, vmax = -3 * cset.rms, 10 * cset.rms
     elif kind == 'residual':
@@ -1888,18 +1901,16 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     for ax, (planes, chan_ix) in zip(axes.flat, cset.iter_planes()):
         image, residual, mask, pbeam = planes
         data = image if kind == 'image' else residual
-        # show colorscale of image data
+        # Show colorscale of image data
         ax.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
-        # show HPBW contour for primary beam data
+        # Show HPBW contour for primary beam data
         ax.contour(pbeam, levels=[0.5], colors='0.5',
                 linestyles='dashed', linewidths=0.4)
-        # show contours for high-SNR emission
+        # Show contours for high-SNR emission
         if kind == 'image':
-            high_snr_levels = cset.rms * np.array([10, 20, 40, 80])
-            #ax.contour(data, levels=high_snr_levels, cmap=plt.cm.brg,
-            #        linestyles='solid', linewidths=0.4)
+            high_snr_levels = list(cset.rms * np.array([10, 20, 40, 80]))
             ax.contourf(data, levels=high_snr_levels, cmap=plt.cm.rainbow)
-        # show contour for the clean mask
+        # Show contour for the clean mask
         if mask.any():
             ax.contour(mask, level=[0.5], colors=mask_cont_color,
                     linestyles='solid', linewidths=0.2)
@@ -1933,7 +1944,7 @@ def make_qa_plots_from_image(path, overwrite=True):
     Parameters
     ----------
     path : str
-        Full path to imagename ending in ".image"
+        Full path to imagename, including the ending ".image".
     overwrite : bool
         Overwrite plot files if they exist.
     """
