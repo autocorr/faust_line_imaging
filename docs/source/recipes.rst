@@ -332,3 +332,35 @@ mask and (b) do not meet a significance cut on a Hanning smoothed cube. The
 moments are computed using the unsmoothed data.
 
 
+Frequency-chunked image processing
+----------------------------------
+The memory requirements for imaging the full spectral windows using the
+``fullcube=True`` are demanding, requiring several hundreds gigabytes of RAM.
+To alleviate memory requirements, the pipeline may be run on individual
+intervals or "chunks" in frequency. The chunked configs may be created from a
+normal instance using :meth:`faust_imaging.ImageConfig.duplicate_into_chunks`.
+Note that currently this chunking requires that the ".sumwt" file of the
+full-bandwidth dirty cube exist, so
+:meth:`faust_imaging.ImageConfig.make_dirty_cube` must be run beforehand.
+
+.. code-block:: python
+
+   # Initialize an image configuration instance with the desired properties.
+   full_config = ImageConfig(...)
+   # Create 10 chunks with properties inherited from the above, full instance.
+   # Note that the `*_dirty.sumwt` image file from the full run must exist
+   # for the frequency interval determination.
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=10)
+   # Standard pipeline processing may now proceed on each chunked config.
+   for config in chunked_configs:
+        config.run_pipeline(ext='clean')
+   # Concatenate the final cube products into contiguous versions.
+   merge_chunked_configs(chunked_configs, ext='clean')
+
+Note that in principle the ``tclean`` with parameter ``chankchunks=-1`` does a
+similar serial processing of frequency ranges, but problems persist. The most
+serious issues observed are the final concatentation step in ``tclean`` can
+segfault, and copying the internal mask files using ``makemask`` also
+frequently fails for large image cubes.
+
+

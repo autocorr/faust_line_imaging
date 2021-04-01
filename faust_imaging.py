@@ -310,8 +310,8 @@ def ms_contains_diameter(ms_filen, diameter=None, epsilon=0.5):
 class Spw(object):
     line_vwin = '20km/s'
 
-    def __init__(self, setup, restfreq, mol_name, name, ms_restfreq, spw_id, ot_name, nchan, chan_width,
-            tot_bw):
+    def __init__(self, setup, restfreq, mol_name, name, ms_restfreq, spw_id,
+            ot_name, nchan, chan_width, tot_bw):
         """
         Parameters
         ----------
@@ -373,6 +373,19 @@ class Spw(object):
 
     def copy(self):
         return deepcopy(self)
+
+    def with_chunk(self, chunk):
+        """
+        Parameters
+        ----------
+        chunk : ChunkConfig, None
+        """
+        if chunk is None:
+            return self
+        else:
+            spw = self.copy()
+            spw.mol_name = '{0}:{1}'.format(self.mol_name, chunk.index)
+            return spw
 
 
 def parse_spw_info_from_ms(ms_filen, field='CB68', out_filen=None):
@@ -651,6 +664,46 @@ def concat_parallel_all_extensions(imagebase):
             concat_parallel_image(imagename)
 
 
+def get_freq_axis_from_image(imagename):
+    """
+    Compute the frequency axis from an image's header coordinate system
+    information.
+
+    Parameters
+    ----------
+    imagename : str
+
+    Returns
+    -------
+    ndarray
+        Frequency axis.
+    str
+        Frequency axis unit (likely Hz).
+    """
+    # Get coordinate system information.
+    ia.open(imagename)
+    csys = ia.coordsys()
+    csys_dict = csys.torecord()
+    shape = ia.shape()
+    ia.close()
+    ia.done()
+    # Validate the axes and get the number of channels.
+    try:
+        spec_index = csys.findaxisbyname('Frequency')
+    except RuntimeError:
+        raise ValueError('Image has no frequency axis, is in velocity?')
+    nchan = shape[spec_index]
+    csys.done()
+    # Compute the frequency axis indices to frequencies.
+    spec_sys = csys_dict['spectral2']
+    sunit = spec_sys['unit']
+    crpix = spec_sys['wcs']['crpix']
+    crval = spec_sys['wcs']['crval']
+    cdelt = spec_sys['wcs']['cdelt']
+    faxis = (np.arange(nchan) + crpix) * cdelt + crval
+    return faxis, sunit
+
+
 def calc_common_coverage_range(imagebase):
     """
     Calculate the common frequency coverage amongst a set of MSs/EBs. The
@@ -659,12 +712,13 @@ def calc_common_coverage_range(imagebase):
     Parameters
     ----------
     imagebase : str
+        Image name without the ".sumwt" extension.
 
     Returns
     -------
-    start : str
+    str
         The start frequency in the LSRK frame.
-    nchan : int
+    int
         The number of channels from `start` at the native spectral resolution.
     """
     sumwt_filen = '{0}.sumwt'.format(imagebase)
@@ -680,17 +734,66 @@ def calc_common_coverage_range(imagebase):
     ix_hi = good_chans.max()
     nchan = abs(ix_hi - ix_lo)
     # convert indices to frequencies
-    spec_sys = csys['spectral2']
-    sunit = spec_sys['unit']
-    crpix = spec_sys['wcs']['crpix']
-    crval = spec_sys['wcs']['crval']
-    cdelt = spec_sys['wcs']['cdelt']
-    faxis = (np.arange(len(sumwt)) + crpix) * cdelt + crval
+    faxis, sunit = get_freq_axis_from_image(sumwt_filen)
     start_val = faxis[ix_lo:ix_hi].min()
     start = '{0}{1}'.format(start_val, sunit)
     log_post('-- start frequency: {0}'.format(start))
     log_post('-- nchan: {0}'.format(nchan))
     return start, nchan
+
+
+def calc_chunk_freqs(imagebase, nchunks=1):
+    """
+    Divide the spectral axis of an image into continuous chunks in frequency.
+    Returned frequencies specify the channel center frequency.
+
+    Parameters
+    ----------
+    imagebase : str
+        Image name base without the ".sumwt" extension.
+    nchunks : int
+        Number of contiguous chunks to divide the frequency range into.
+
+    Returns
+    -------
+    [[str, int], ...]
+        (str) LSRK frequency of the bin left-edge of the first channel.
+        **units**: Hz.
+
+        (int) Number of channels in the chunk.
+    """
+    nchunks = int(nchunks)
+    assert nchunks >= 1
+    freq_start, nchan_range = calc_common_coverage_range(imagebase)
+    assert nchunks < nchan_range
+    # Convert start frequency unit string into a float.
+    spec_unit = 'Hz'
+    freq_start = qa.convert(freq_start, spec_unit)['value']
+    # Get frequency channel width.
+    imagename = '{0}.sumwt'.format(imagebase)
+    ia.open(imagename)
+    csys = ia.coordsys()
+    csys_dict = csys.torecord()
+    ia.close()
+    ia.done()
+    csys.done()
+    # Ensure that the delta and start frequency have the same units.
+    cdelt = csys_dict['spectral2']['wcs']['cdelt']
+    cunit = csys_dict['spectral2']['unit']
+    cdelt = qa.convert(qa.quantity(cdelt, cunit), spec_unit)['value']
+    cdelt = abs(cdelt)
+    # Iteratively determine the start frequency and the number of channels in
+    # the chunk.
+    nchan_fullchunk = nchan_range // nchunks
+    nchan_lastchunk = nchan_fullchunk + nchan_range % nchunks
+    chunks = []
+    freq = freq_start
+    for i in range(nchunks):
+        n = nchan_lastchunk if i == nchunks - 1 else nchan_fullchunk
+        freq_withunit = qa.tos(qa.quantity(freq, spec_unit))
+        chunks.append([freq_withunit, n])
+        freq += n * cdelt
+    return chunks
 
 
 def primary_beam_correct(imagebase):
@@ -903,17 +1006,33 @@ def check_max_residual(imagebase, sigma=5.5):
 # Line imaging
 ###############################################################################
 
+class ChunkConfig(object):
+    def __init__(self, start, nchan, index):
+        """
+        Parameters
+        ----------
+        start : str
+        nchan : int
+        index : int
+        """
+        assert qa.isquantity(start)
+        self.start = start
+        self.nchan = nchan
+        self.index = int(index)
+
+
 class ImageConfig(object):
     _scales = [0, 15, 45, 135]  # pixels; point, 1.5, 4.5 beam hpbw's (10 pix)
     _mask_ang_scales = [0, 1, 3]  # arcsec
     _autom_kwargs = AUTOM_KWARGS
     _autom_7m_kwargs = AUTOM_7M_KWARGS
+    _rms = None
     smallscalebias = -1.0
     gain = 0.05
     cyclefactor = 2.0
     parallel = MPIEnvironment().is_mpi_enabled
 
-    def __init__(self, dset, spw, fullcube=True, weighting=0.5):
+    def __init__(self, dset, spw, fullcube=True, weighting=0.5, chunk=None):
         """
         Configuration object for `tclean` related custom tasks. Parameters
         specify deconvolution and image-cube properties such as the weighting.
@@ -926,6 +1045,7 @@ class ImageConfig(object):
         spw : Spw
         fullcube : bool
         weighting : str, number
+        chunk : ChunkConfig, None
 
         Attributes
         ----------
@@ -945,8 +1065,11 @@ class ImageConfig(object):
         """
         assert dset.setup == spw.setup
         self.dset = dset
-        self.spw = spw
+        self.spw = spw.with_chunk(chunk)
         self.fullcube = fullcube
+        self.chunk = chunk
+        if not fullcube and chunk is not None:
+            raise ValueError("fullcube must be `True` when imaging a chunk.")
         # weighting method, must be valid for tclean
         robust, weighting_kind = format_cube_robust(weighting)
         self.weighting = weighting
@@ -986,6 +1109,11 @@ class ImageConfig(object):
             Either a string for a weighting method recognized by `tclean`,
             such as 'natural' or 'uniform'; or a number for a Briggs weighting
             robust value.
+        chunk : ChunkConfig, None
+            Chunk configuration instance for dividing the frequency axis into
+            individual, smaller memory foot-print intervals in frequency. The
+            default value of `None` will apply no chunking along the frequency
+            axis.
         """
         spw = ALL_SPWS[label]
         dset = DataSet(field, setup=spw.setup, kind=kind)
@@ -1002,25 +1130,39 @@ class ImageConfig(object):
     @property
     def rms(self):
         """
-        Image RMS determined using `imstat` over the entire dirty cube.
+        Image RMS. By default, determined using `imstat` over the entire dirty
+        cube. The RMS can also be manually set.
         """
-        imagename = '{0}.image'.format(self.dirty_imagebase)
-        rms = calc_rms_from_image(imagename)
-        log_post('-- RMS {0} Jy'.format(rms))
-        return rms
+        if self._rms is None:
+            imagename = '{0}.image'.format(self.dirty_imagebase)
+            if not os.path.exists(imagename):
+                log_post('-- File not found to compute RMS from: {0}'.format(imagename))
+                log_post('-- Has the `.make_dirty_cube` been run?')
+                raise IOError
+            rms = calc_rms_from_image(imagename)
+            log_post('-- RMS {0} Jy'.format(rms))
+            return rms
+        else:
+            return self._rms
+
+    @rms.setter
+    def rms(self, rms):
+        self._rms = rms
 
     @property
     def selected_start_nchan(self):
-        if self.fullcube:
+        if self.fullcube and self.chunk is None:
             # Restrict coverage to common coverage cross EBs.
-            start, nchan = calc_common_coverage_range(self.dirty_imagebase)
+            return calc_common_coverage_range(self.dirty_imagebase)
+        elif self.chunk is not None:
+            return self.chunk.start, self.chunk.nchan
         else:
             # Restrict coverage to range around source velocity.
             # NOTE This may produce undesirable behaviour if the line rest
             #      frequency is next to the edge of the SPW.
             start = self.dset.target.vstart
             nchan = self.spw.win_chan
-        return start, nchan
+            return start, nchan
 
     @property
     def spw_ids(self):
@@ -1052,6 +1194,44 @@ class ImageConfig(object):
             else:
                 spw_ids_for_vis.extend(matches)
         return [str(n) for n in spw_ids_for_vis]
+
+    def duplicate_into_chunks(self, nchunks=1):
+        """
+        Duplicate the image configuration into multiple versions set to be chunked
+        in frequency. This eases memory requirements because each smaller image
+        cubes may be processed independently.
+
+        Parameters
+        ----------
+        nchunks : int
+            Number of chunks to create.
+
+        Returns
+        -------
+        [ImageConfig]
+            List of instances with properties set for chunking.
+        """
+        if self.chunk is not None:
+            raise ValueError("Config is already chunked: {0}".format(self.chunk))
+        # Create chunk configuration instances from the file-path to the dirty
+        # image products (in order to use the "sumwt" file)
+        chunks = [
+                ChunkConfig(start, nchan, i)
+                for i, (start, nchan) in enumerate(calc_chunk_freqs(
+                    self.dirty_imagebase, nchunks=nchunks))
+        ]
+        chunked_configs = []
+        # Copy and mutate the existing instance into modified chunked versions.
+        # NOTE If more sophisticated configuration is ever added to the
+        #      initialization, then this simple over-writing of the attributes
+        #      may leave instances improperly initialized.
+        for chunk in chunks:
+            log_post('-- Chunk start frequency: ({0}, {1})'.format(chunk.index, chunk.start))
+            config = deepcopy(self)
+            config.spw = config.spw.with_chunk(chunk)
+            config.chunk = chunk
+            chunked_configs.append(config)
+        return chunked_configs
 
     def get_imagebase(self, ext=None):
         """
@@ -1121,8 +1301,14 @@ class ImageConfig(object):
         log_post(':: Creating dirty cube ({0})'.format(imagename))
         # To create dirty cube simply perform zero iterations.
         niter = 0
-        start = None
-        nchan = -1
+        # When imaging the full cube without chunking, image the full spectral
+        # coverage over all array configurations (nchan=-1) but use the
+        # pre-computed range when imaging a chunk.
+        if self.chunk is None:
+            start = None
+            nchan = -1
+        else:
+            start, nchan = self.selected_start_nchan
         # run tclean
         delete_all_extensions(imagename)
         tclean(
@@ -1446,8 +1632,6 @@ def run_pipeline(field, setup=None, weightings=None, fullcube=True,
             for weighting in weightings:
                 config = ImageConfig(dset, spw, fullcube=fullcube, weighting=weighting)
                 config.run_pipeline()
-    # TODO:
-    #   - create moment maps
 
 
 ###############################################################################
