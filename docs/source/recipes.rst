@@ -357,18 +357,20 @@ full-bandwidth dirty cube exist, so
    # Concatenate the final cube products into contiguous versions.
    merge_chunked_configs(chunked_configs, ext='clean')
 
-Note that in principle the ``tclean`` with parameter ``chankchunks=-1`` does a
-similar serial processing of frequency ranges, but problems persist. The most
-serious issues observed are the final concatentation step in ``tclean`` can
-segfault, and copying the internal mask files using ``makemask`` also
-frequently fails for large image cubes.
+Note that in principle ``tclean`` run with parameter the ``chankchunks=-1``
+applies a similar serial processing of frequency ranges, but problems persist.
+The most serious issues observed are that the final concatentation step in
+``tclean`` can segfault, and that copying the internal mask files using
+``makemask`` also frequently fails for large image cubes.
 
 
 Manually setting the RMS
 ------------------------
-By default, the global RMS is derived from the full dirty cube. The value may
-however be manually set for situations where it is not correct, such as a small
-windows where >50% of the channels contain significant emission.
+By default the global RMS used for deriving thresholds is computed from the
+full dirty cube. For small windows where >50% of the channels may contain
+significant emission, this globally RMS value may not be appropriate. If
+the desired RMS value to use is known, the
+:attr:`faust_imaging.ImageConfig.rms` attribute may be set manually.
 
 .. code-block:: python
 
