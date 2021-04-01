@@ -364,3 +364,15 @@ segfault, and copying the internal mask files using ``makemask`` also
 frequently fails for large image cubes.
 
 
+Manually setting the RMS
+------------------------
+By default, the global RMS is derived from the full dirty cube. The value may
+however be manually set for situations where it is not correct, such as a small
+windows where >50% of the channels contain significant emission.
+
+.. code-block:: python
+
+   config = ImageConfig(...)
+   config.rms = 0.001  # in Jy
+
+
