@@ -339,29 +339,28 @@ The memory requirements for imaging the full spectral windows using the
 To alleviate memory requirements, the pipeline may be run on individual
 intervals or "chunks" in frequency. The chunked configs may be created from a
 normal instance using :meth:`faust_imaging.ImageConfig.duplicate_into_chunks`.
-Note that currently this chunking requires that the ".sumwt" file of the
-full-bandwidth dirty cube exist, so
-:meth:`faust_imaging.ImageConfig.make_dirty_cube` must be run beforehand.
 
 .. code-block:: python
 
    # Initialize an image configuration instance with the desired properties.
    full_config = ImageConfig(...)
-   # Create 10 chunks with properties inherited from the above, full instance.
-   # Note that the `*_dirty.sumwt` image file from the full run must exist
-   # for the frequency interval determination.
-   chunked_configs = full_config.duplicate_into_chunks(nchunks=10)
+   # Create 4 chunks with properties inherited from the above, full instance.
+   # Note that if a ".sumwt" file does not exist, a dirty image will be
+   # made of a small field in order to calculate it first.
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
    # Standard pipeline processing may now proceed on each chunked config.
    for config in chunked_configs:
         config.run_pipeline(ext='clean')
    # Concatenate the final cube products into contiguous versions.
-   merge_chunked_configs(chunked_configs, ext='clean')
+   im_exts = ('mask', 'residual', 'image', 'image.pbcor.common')
+   concat_chunked_cubes(chunked_configs, ext='clean', im_exts=im_exts)
 
-Note that in principle ``tclean`` run with parameter the ``chankchunks=-1``
-applies a similar serial processing of frequency ranges, but problems persist.
-The most serious issues observed are that the final concatentation step in
-``tclean`` can segfault, and that copying the internal mask files using
-``makemask`` also frequently fails for large image cubes.
+Note that while in principle running ``tclean`` with the parameter
+``chankchunks=-1`` applies a similar serial processing of frequency ranges,
+unfortunately problems persist.  The most serious issues observed are that the
+final concatentation step in ``tclean`` can segfault, and that copying the
+internal mask files using ``makemask`` also frequently fails for large image
+cubes.
 
 
 Manually setting the RMS

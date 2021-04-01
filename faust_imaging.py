@@ -94,7 +94,10 @@ WEIGHTINGS = (0.5,)
 # Default extension name for dirty images
 DIRTY_EXT = 'dirty'
 # Default extension name for unmasked clean model
-NOMSK_EXT = 'nomask'
+NOMASK_EXT = 'nomask'
+# Default extension name for small image stamps used to calculate the ".sumwt"
+# files.
+TINYIMG_EXT = 'tinyimg'
 # perchanelweightdensity parameter in tclean, changing to False slightly
 # improves the resolution at the expense of sensitivity and uniform RMS.
 PERCHANWT = False
@@ -384,7 +387,7 @@ class Spw(object):
             return self
         else:
             spw = self.copy()
-            spw.mol_name = '{0}:{1}'.format(self.mol_name, chunk.index)
+            spw.mol_name = '{0}_chunk{1}'.format(self.mol_name, chunk.index)
             return spw
 
 
@@ -630,8 +633,8 @@ def export_fits(imagename, velocity=False, overwrite=True):
 def concat_parallel_image(imagename):
     """
     Create a contiguous image cube file from a 'parallel image' generated from
-    a multiprocess `tclean` run with `parallel=True`. Generates a new image
-    appended with '.concat'.
+    a multiprocess `tclean` run with `parallel=True`. The function replaces the
+    original parallel image with the contiguous image.
     """
     _, ext = os.path.splitext(imagename)
     ext = ext.lstrip('.')
@@ -1125,7 +1128,11 @@ class ImageConfig(object):
 
     @property
     def nomask_imagebase(self):
-        return self.get_imagebase(ext=NOMSK_EXT)
+        return self.get_imagebase(ext=NOMASK_EXT)
+
+    @property
+    def tinyimg_imagebase(self):
+        return self.get_imagebase(ext=TINYIMG_EXT)
 
     @property
     def rms(self):
@@ -1199,7 +1206,11 @@ class ImageConfig(object):
         """
         Duplicate the image configuration into multiple versions set to be chunked
         in frequency. This eases memory requirements because each smaller image
-        cubes may be processed independently.
+        cubes may be processed independently. A full-bandwidth ".sumwt" file must
+        exist to compute the starting frequencies. If neither
+        :meth:`faust_imaging.ImageConfig.make_dirty_cube` nor
+        :meth:`faust_imaging.ImageConfig.make_tiny_image_stamp` have been executed,
+        the latter will be run before calculating the chunk frequencies.
 
         Parameters
         ----------
@@ -1213,16 +1224,26 @@ class ImageConfig(object):
         """
         if self.chunk is not None:
             raise ValueError("Config is already chunked: {0}".format(self.chunk))
-        # Create chunk configuration instances from the file-path to the dirty
-        # image products (in order to use the "sumwt" file)
+        # A full-bandwidth cube must exist to compute the frequency ranges. Use
+        # the full dirty image if it exists, otherwise use or make a tiny image
+        # stamp for those purposes.
+        if os.path.exists(self.dirty_imagebase+'.sumwt'):
+            imagebase = self.dirty_imagebase
+        elif os.path.exists(self.tinyimg_imagebase+'.sumwt'):
+            imagebase = self.tinyimg_imagebase
+        else:
+            self.make_tiny_image_stamp()
+            imagebase = self.tinyimg_imagebase
+        # Create chunk configuration instances from the file-path to the image
+        # products including the ".sumwt" file.
         chunks = [
                 ChunkConfig(start, nchan, i)
                 for i, (start, nchan) in enumerate(calc_chunk_freqs(
-                    self.dirty_imagebase, nchunks=nchunks))
+                    imagebase, nchunks=nchunks))
         ]
         chunked_configs = []
         # Copy and mutate the existing instance into modified chunked versions.
-        # NOTE If more sophisticated configuration is ever added to the
+        # NOTE If a more sophisticated configuration is ever added to the
         #      initialization, then this simple over-writing of the attributes
         #      may leave instances improperly initialized.
         for chunk in chunks:
@@ -1290,10 +1311,61 @@ class ImageConfig(object):
         for filen in matched_files:
             safely_remove_file(filen)
 
+    def make_tiny_image_stamp(self):
+        """
+        Image a small field in order to produce the ".sumwt" file without
+        producing a full set of dirty image products (which may be very large).
+        The default suffix set by ``TINYIMG_EXT`` is "_tinyimg".
+        """
+        dset, spw = self.dset, self.spw
+        imagename = self.tinyimg_imagebase
+        log_post(':: Creating cube for sumwt ({0})'.format(imagename))
+        # Create a dirty cube using the full-bandpass.
+        niter = 0
+        start = None
+        nchan = -1
+        # For this purpose the cell size does not need to be as aggressively
+        # oversampled. Field sizes of about 10 HPBW appear to be the
+        # approximate mininum required to create the PSF file and compute the
+        # weights. Use a bit larger to be safe.
+        oversampling_factor = 3
+        cell = qa.tos(qa.quantity(dset.target.res/oversampling_factor, 'arcsec'))
+        imwidth = cleanhelper.getOptimumSize(int(15*oversampling_factor))
+        imsize = [imwidth, imwidth]
+        # run tclean
+        delete_all_extensions(imagename)
+        tclean(
+            vis=dset.vis,
+            imagename=imagename,
+            field=dset.field,
+            spw=self.spw_ids,
+            specmode='cube',
+            chanchunks=-1,
+            outframe='lsrk',
+            veltype='radio',
+            restfreq=spw.restfreq,
+            nchan=nchan,
+            start=start,
+            imsize=imsize,
+            cell=cell,
+            # gridder parameters
+            gridder=dset.gridder,
+            weighting=self.weighting_kind,
+            robust=self.robust,
+            perchanweightdensity=PERCHANWT,
+            # deconvolver parameters
+            pblimit=dset.pblimit,
+            niter=niter,
+            interactive=False,
+            parallel=self.parallel,
+        )
+        self.cleanup(imagename)
+
     def make_dirty_cube(self):
         """
         Generate a dirty image cube and associated `tclean` products.
         Run with equivalent parameters as `clean_line` but with `niter=0`.
+        THe default suffix set by ``DIRTY_EXT`` is "_dirty".
         """
         dset, spw = self.dset, self.spw
         # Book-keeping before run
@@ -1583,6 +1655,46 @@ class ImageConfig(object):
         self.make_seed_mask(sigma=5.0)
         self.clean_line(mask_method='seed+multithresh', ext=ext)
         self.postprocess(ext=ext, make_fits=True)
+
+
+def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=('image.pbcor.common',)):
+    """
+    Use ``ia.imageconcat`` to concatenate chunked image files into single
+    a cube with contiguous data.
+
+    Parameters
+    ----------
+    chunked_configs : [ImageConfig, ...]
+        ImageConfig instances to concatenate.
+    ext : str
+        Extension name suffix, e.g. 'clean', 'nomask', etc.
+    im_exts : (str, ...)
+        Names of image extensions, e.g. 'mask', 'image.pbcor.common', etc.
+    """
+    # Validate input.
+    im_exts = [im_exts] if isinstance(im_exts, str) else im_exts
+    im_exts = [s.lstrip('.') for s in im_exts]
+    chunked_imagebases = [c.get_imagebase(ext=ext) for c in chunked_configs]
+    # Remove "_chunk0" in the first chunk to get the outfile base name.
+    first_config = chunked_configs[0]
+    assert '_chunk0' in first_config.dirty_imagebase
+    imagebase = first_config.get_imagebase(ext=ext).replace('_chunk0', '')
+    # Concatenate chunk files for each image extension name.
+    for im_ext in im_exts:
+        outfile = '{0}.{1}'.format(imagebase, im_ext)
+        log_post(':: Concatenating file "{0}"'.format(outfile))
+        infiles = [
+                '{0}.{1}'.format(s, im_ext)
+                for s in chunked_imagebases
+        ]
+        if_exists_remove(outfile)
+        ia.imageconcat(
+                outfile=outfile,
+                infiles=infiles,
+                reorder=True,
+        ).done()
+        ia.close()
+        ia.done()
 
 
 def make_all_line_dirty_cubes(dset, weighting=0.5, fullcube=True):
