@@ -886,27 +886,44 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     return rms
 
 
-def create_mask_from_threshold(infile, outfile, sigma, overwrite=True):
+def create_mask_from_threshold(infile, outfile, thresh, overwrite=True):
     """
     Create a 1/0 mask according to whether pixel values in the input image are
-    or are not above ``sigma`` times the RMS of the cube.
+    or are not above ``thresh`` in Jy.
 
     Parameters
     ----------
     infile : str
     outfile : str
-    sigma : number
+    thresh : number
+        **units**: Jy
     overwrite : bool, default True
     """
     if overwrite:
         if_exists_remove(outfile)
-    rms = calc_rms_from_image(infile)
-    thresh = sigma * rms
     immath(imagename=infile, mode='evalexpr', outfile=outfile,
             expr='iif(IM0>{0},1,0)'.format(thresh))
 
 
-def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3)):
+def effective_beamwidth_from_image(imagename):
+    """
+    Median of the geometric-mean beamwidths in an image with perplane beams.
+
+    Parameters
+    ----------
+    imagename : str
+    """
+    header = imhead(imagename)
+    beam_areas = np.array([
+            v['*0']['major']['value'] * v['*0']['minor']['value']
+            for v in header['perplanebeams']['beams'].values()
+    ])
+    med_area = np.median(beam_areas)
+    eff_size = np.sqrt(med_area)
+    return eff_size
+
+
+def make_multiscale_joint_mask(imagename, rms, sigma=5.0, mask_ang_scales=(0, 1, 3)):
     """
     Create a joint mask from multiple smoothed copies of an image. A file
     with the `.summask` extension is created from the union of an RMS threshold
@@ -916,6 +933,9 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3)):
     ----------
     imagename : str
         Image name base without the extension.
+    rms : number
+        RMS value of the unsmoothed image.
+        **units**: Jy
     sigma : number
         Multiple of the RMS to threshold each image.
     mask_ang_scales : Iterable(number)
@@ -930,9 +950,11 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3)):
         and the joint or unioned mask file across scales is written to:
             joint mask:     '<IMG>.summask'
     """
+    thresh = sigma * rms
     log_post(':: Creating threshold based mask')
     n_scales = len(mask_ang_scales)
     original_image = '{0}.image'.format(imagename)
+    beamwidth = effective_beamwidth_from_image(imagename)
     pb_image = '{0}.pb'.format(imagename)
     base_names = [
             '{0}_smooth{1:.3f}'.format(imagename, s)
@@ -944,7 +966,7 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3)):
         assert scale >= 0
         if scale == 0:
             # For a smoothing scale of zero, use the original image.
-            create_mask_from_threshold(original_image, mask_image, sigma)
+            create_mask_from_threshold(original_image, mask_image, thresh)
             continue
         # Smooth the image with a Gaussian kernel of the given scale.
         if_exists_remove(smooth_image)
@@ -954,8 +976,11 @@ def make_multiscale_joint_mask(imagename, sigma=5.0, mask_ang_scales=(0, 1, 3)):
                 outfile=smooth_image)
         # PB mask is erased after smoothing, so copy it back in from the PB
         copy_pb_mask(smooth_image, pb_image)
-        # Threshold the image to create a mask
-        create_mask_from_threshold(smooth_image, mask_image, sigma)
+        # Threshold the image to create a mask. To account for the different
+        # RMS in the smoothed maps (implicitly in Jy/beam), the threshold needs
+        # to be scaled according to the relative (target) beam size.
+        beam_factor = max(1, scale / beamwidth)
+        create_mask_from_threshold(smooth_image, mask_image, beam_factor*thresh)
     # Add all of the masks for an effective chained "binary OR" operation
     sum_expr = '+'.join([
             'IM{0}'.format(i)
@@ -1371,14 +1396,14 @@ class ImageConfig(object):
         ia.close()
         ia.done()
         if all(data == 0):
-            log_post('-- Failed to make PSF file, sumwt is all zeros: "{0}"'.format(sumwt_filen)))
+            log_post('-- Failed to make PSF file, sumwt is all zeros: "{0}"'.format(sumwt_filen))
             raise RuntimeError
 
     def make_dirty_cube(self):
         """
         Generate a dirty image cube and associated `tclean` products.
         Run with equivalent parameters as `clean_line` but with `niter=0`.
-        THe default suffix set by ``DIRTY_EXT`` is "_dirty".
+        The default suffix set by ``DIRTY_EXT`` is "_dirty".
         """
         dset, spw = self.dset, self.spw
         # Book-keeping before run
@@ -1504,7 +1529,7 @@ class ImageConfig(object):
             log_post('-- File not found: {0}.image'.format(imagename))
             log_post('-- Has the unmasked call to tclean been run?')
             raise IOError
-        make_multiscale_joint_mask(imagename, sigma=sigma,
+        make_multiscale_joint_mask(imagename, self.rms, sigma=sigma,
                 mask_ang_scales=self.mask_ang_scales)
 
     def clean_line(self, mask_method='seed+multithresh', sigma=2,
@@ -1646,7 +1671,27 @@ class ImageConfig(object):
             image_to_export = imagebase + '.image.pbcor.common'
             export_fits(image_to_export)
 
-    def run_pipeline(self, ext='clean'):
+    def run_pipeline_tasks(self, ext='clean', nomask_sigma=4.5,
+            seedmask_sigma=5.0, clean_sigma=2.0):
+        """
+        Helper method to run the pipeline tasks in sequence with reasonable
+        default parameters. See :meth:`run_pipeline` for further description.
+
+        Parameters
+        ----------
+        ext : str
+        nomask_sigma : number
+        seedmask_sigma : number
+        clean_sigma : number
+        """
+        self.make_dirty_cube()
+        self.clean_line_nomask(sigma=nomask_sigma)
+        self.make_seed_mask(sigma=seedmask_sigma)
+        self.clean_line(mask_method='seed+multithresh', ext=ext, sigma=clean_sigma)
+        self.postprocess(ext=ext, make_fits=True)
+
+    def run_pipeline(self, ext='clean', use_chunking=True, nchunks=None,
+            nomask_sigma=4.5, seedmask_sigma=5.0, clean_sigma=2.0):
         """
         Run all pipeline tasks with default parameters. Custom recipes should
         call the individual methods in sequence. The final pipeline product
@@ -1658,33 +1703,52 @@ class ImageConfig(object):
 
             "<FILENAME>.image.pbcor.common.fits"
 
-        Parameters
-        ----------
-        ext : str
-            Extension name for final, deconvolved image products.
-        """
-        self.make_dirty_cube()
-        self.clean_line_nomask(sigma=4.5)
-        self.make_seed_mask(sigma=5.0)
-        self.clean_line(mask_method='seed+multithresh', ext=ext)
-        self.postprocess(ext=ext, make_fits=True)
-
-    def run_pipeline_chunked(self, ext='clean', nchunks=2):
-        """
-        Run all pipeline tasks serially on image cubes chunked in frequency.
-        See the docstring for :meth:`run_pipeline` for more details.
+        For convenience, some significance thresholds ("sigma") may also be set
+        for this method. For more customized pipeline procedures, calling the
+        individual pipeline methods is recommended.
 
         Parameters
         ----------
         ext : str
             Extension name for final, deconvolved image products.
-        nchunks : int
-            Number of frequency intervals to chunk image products into.
+        use_chunking : bool
+            If True then chunk the image into separate frequency intervals,
+            process individually in serial, and then concatenate the final
+            results.
+        nchunks : int, None
+            Number of approximately uniform frequency intervals to chunk image
+            products into. If `None` then the number of chunks is chosen
+            heuristically.
+        nomask_sigma : number
+            Global clean threshold for the un-masked clean run.
+        seedmask_sigma : number
+            Significance with which to threshold the un-masked clean run to
+            create the seed mask.
+        clean_sigma : number
+            Global clean threshold of the final clean run.
         """
-        chunked_configs = self.duplicate_into_chunks(nchunks=nchunks)
-        for config in chunked_configs:
-            config.run_pipeline(ext=ext)
-        concat_chunked_cubes(chunked_configs, ext=ext)
+        sigma_kwargs = {'nomask_sigma': nomask_sigma, 'seedmask_sigma':
+                seedmask_sigma, 'clean_sigma': clean_sigma}
+        # If already chunked or explicitly selected to not use chunking, then
+        # do not perform additional chunking and simply run the pipeline tasks.
+        if self.chunk is not None or not use_chunking:
+            self.run_pipeline_tasks(ext=ext, **sigma_kwargs)
+        else:
+            if nchunks is None:
+                is_s12 = self.spw.setup in (1, 2)
+                is_fdm = self.spw.mol_name != 'cont'
+                nchunk_map = {
+                        #  S12?   FDM?
+                        ( True,  True):   4,  # S1/S2 FDM
+                        ( True, False):  40,  # S1/S2 TDM
+                        (False,  True): 100,  # S3    FDM
+                        (False, False): 200,  # S3    TDM
+                }
+                nchunks = nchunk_map[(is_s12, is_fdm)]
+            chunked_configs = self.duplicate_into_chunks(nchunks=nchunks)
+            for config in chunked_configs:
+                config.run_pipeline_tasks(ext=ext, **sigma_kwargs)
+            concat_chunked_cubes(chunked_configs, ext=ext)
 
 
 def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=None):
@@ -1749,7 +1813,7 @@ def postproc_all_cleaned_images(dset):
 
 
 def run_pipeline(field, setup=None, weightings=None, fullcube=True,
-        do_cont=True):
+        do_cont=True, chunked=True):
     """
     Run all pipeline tasks over all setups, spectral windows, and
     uv-weightings.
@@ -1766,7 +1830,10 @@ def run_pipeline(field, setup=None, weightings=None, fullcube=True,
         Image the full spectral window or a small window around the SPWs
         defined rest frequency.
     do_cont : bool, default True
-        Whether to image the continuum SPWs or not. 
+        Whether to image the continuum SPWs or not.
+    chunked : bool, default True
+        Process frequency intervals of each SPW in serial to reduce memory
+        requirements.
     """
     weightings = WEIGHTINGS if weightings is None else weightings
     run_setups = (1, 2, 3) if setup is None else [setup]
@@ -1779,7 +1846,10 @@ def run_pipeline(field, setup=None, weightings=None, fullcube=True,
             log_post(':: Imaging Setup-{0} {1}'.format(setup, spw.label))
             for weighting in weightings:
                 config = ImageConfig(dset, spw, fullcube=fullcube, weighting=weighting)
-                config.run_pipeline()
+                if chunked:
+                    config.run_pipeline_chunked()
+                else:
+                    config.run_pipeline()
 
 
 ###############################################################################

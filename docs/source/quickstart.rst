@@ -1,11 +1,12 @@
 Quick-start guide
 =================
-First note that many of these image products are very large take a great deal
-of memory to run (> 60GB). Further, when imaging full bandwidth cubes, the
+First note that many of these image products are very large take a large amount
+of memory to run (> 40GB). Further, when imaging full bandwidth cubes, the
 resulting products can require a large volume of disk space (potentially >
 100GB for a single SPW). After producing the final cubes, many of these
-products can be removed however. Please ensure that the host system has
-sufficient resources.
+products can be removed. Please ensure that the host system has sufficient
+resources. By default the pipeline processes frequency intervals of each SPW in
+serial to reduce memory requirements and concatenates the final results.
 
 First open CASA from the directory set in ``PROD_DIR`` and then execute the
 pipeline script from within CASA:

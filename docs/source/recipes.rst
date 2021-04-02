@@ -340,15 +340,17 @@ The memory requirements for imaging the full spectral windows using the
 ``fullcube=True`` are demanding, requiring several hundred gigabytes of RAM.
 To relieve memory requirements, the pipeline may be run on individual
 frequency intervals or "chunks". To run the standard pipeline on each
-chunk and then concatenate the results, use the helper method
-:meth:`faust_imaging.ImageConfig.run_pipeline_chunked`:
+chunk and then concatenate the results, simply set ``use_chunking=True``
+in :meth:`faust_imaging.ImageConfig.run_pipeline`:
 
 .. code-block:: python
 
    config = ImageConfig(...)  # or `.from_name(...)`
-   config.run_pipeline_chunked(ext='clean', nchunks=4)
+   config.run_pipeline(ext='clean', use_chunking=True)
 
-The chunked configs may also be created from a normal instance using
+The number of chunks can be controlled with the ``nchunks`` parameter.  If left
+unset, then the number of chunks is chosen heuristically.  The chunked configs
+may also be created from a normal instance using
 :meth:`faust_imaging.ImageConfig.duplicate_into_chunks` and treated
 individually for more customized processing.
 
