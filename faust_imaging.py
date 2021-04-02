@@ -1039,8 +1039,8 @@ class ImageConfig(object):
         """
         Configuration object for `tclean` related custom tasks. Parameters
         specify deconvolution and image-cube properties such as the weighting.
-        See the docstring for `.from_name` for more complete parameter
-        descriptions.
+        See the docstring for :meth:`from_name` for more complete
+        parameter descriptions.
 
         Parameters
         ----------

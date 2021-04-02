@@ -362,6 +362,33 @@ final concatentation step in ``tclean`` can segfault, and that copying the
 internal mask files using ``makemask`` also frequently fails for large image
 cubes.
 
+The pipeline procedures may also be run in different instances in CASA to
+process parts of the image in parallel. To do so, simply ensure that the
+same configuration options are applied in order to reproduce the equivalent
+``ImageConfig`` instances, as below:
+
+.. code-block:: python
+
+   # In CASA instance 1, process chunks 0 and 1
+   full_config = ImageConfig(...)
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   for config in chunked_configs[:2]:
+        config.run_pipeline(ext='clean')
+
+   # In CASA instance 2, process chunks 2 and 3. Ensure that the same
+   # configuration options and modifications are also applied here as well!
+   full_config = ImageConfig(...)
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   for config in chunked_configs[2:]:
+        config.run_pipeline(ext='clean')
+
+   # Now, in any CASA instance after the above two have finished running,
+   # merge the image products.
+   full_config = ImageConfig(...)
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   im_exts = ('image',)
+   concat_chunked_cubes(chunked_configs, ext='clean', im_exts=im_exts)
+
 
 Manually setting the RMS
 ------------------------
