@@ -767,8 +767,8 @@ def calc_chunk_freqs(imagebase, nchunks=1):
     """
     nchunks = int(nchunks)
     assert nchunks >= 1
-    freq_start, nchan_range = calc_common_coverage_range(imagebase)
-    assert nchunks < nchan_range
+    freq_start, nchan_total = calc_common_coverage_range(imagebase)
+    assert nchunks < nchan_total
     # Convert start frequency unit string into a float.
     spec_unit = 'Hz'
     freq_start = qa.convert(freq_start, spec_unit)['value']
@@ -785,14 +785,17 @@ def calc_chunk_freqs(imagebase, nchunks=1):
     cunit = csys_dict['spectral2']['unit']
     cdelt = qa.convert(qa.quantity(cdelt, cunit), spec_unit)['value']
     cdelt = abs(cdelt)
-    # Iteratively determine the start frequency and the number of channels in
-    # the chunk.
-    nchan_fullchunk = nchan_range // nchunks
-    nchan_lastchunk = nchan_fullchunk + nchan_range % nchunks
-    chunks = []
+    # Calculate the number of channels per chunk. Distribute the channels the
+    # channel numbers that don't evenly divide uniformly among the remaining.
+    chan_per_chunk = np.zeros(nchunks, dtype=int)
+    chan_per_chunk[:] = nchan_total // nchunks
+    remainder = nchan_total % nchunks
+    chan_per_chunk[-remainder:] += 1
+    assert chan_per_chunk.sum() == nchan_total
+    # Calculate the starting frequencies by iteratively adding the chunk
+    # bandwidth to the last starting frequency.
     freq = freq_start
-    for i in range(nchunks):
-        n = nchan_lastchunk if i == nchunks - 1 else nchan_fullchunk
+    for n in chan_per_chunk:
         freq_withunit = qa.tos(qa.quantity(freq, spec_unit))
         chunks.append([freq_withunit, n])
         freq += n * cdelt
