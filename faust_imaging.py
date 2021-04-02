@@ -1360,6 +1360,16 @@ class ImageConfig(object):
             parallel=self.parallel,
         )
         self.cleanup(imagename)
+        # Validate that the sumwt file contains useful data. If tclean fails to
+        # create the PSF then the sumwt file will contain all zeros.
+        sumwt_filen = '{0}.sumwt'.format(imagename)
+        ia.open(sumwt_filen)
+        data = ia.getchunk()
+        ia.close()
+        ia.done()
+        if all(data == 0):
+            log_post('-- Failed to make PSF file, sumwt is all zeros: "{0}"'.format(sumwt_filen)))
+            raise RuntimeError
 
     def make_dirty_cube(self):
         """
@@ -1655,6 +1665,23 @@ class ImageConfig(object):
         self.make_seed_mask(sigma=5.0)
         self.clean_line(mask_method='seed+multithresh', ext=ext)
         self.postprocess(ext=ext, make_fits=True)
+
+    def run_pipeline_chunked(self, ext='clean', nchunks=2):
+        """
+        Run all pipeline tasks serially on image cubes chunked in frequency.
+        See the docstring for :meth:`run_pipeline` for more details.
+
+        Parameters
+        ----------
+        ext : str
+            Extension name for final, deconvolved image products.
+        nchunks : int
+            Number of frequency intervals to chunk image products into.
+        """
+        chunked_configs = self.duplicate_into_chunks(nchunks=nchunks)
+        for config in chunked_configs:
+            config.run_pipeline(ext=ext)
+        concat_chunked_cubes(chunked_configs, ext=ext)
 
 
 def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=None):

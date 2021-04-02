@@ -332,13 +332,25 @@ mask and (b) do not meet a significance cut on a Hanning smoothed cube. The
 moments are computed using the unsmoothed data.
 
 
+.. _Chunking:
+
 Frequency-chunked image processing
 ----------------------------------
 The memory requirements for imaging the full spectral windows using the
-``fullcube=True`` are demanding, requiring several hundreds gigabytes of RAM.
-To alleviate memory requirements, the pipeline may be run on individual
-intervals or "chunks" in frequency. The chunked configs may be created from a
-normal instance using :meth:`faust_imaging.ImageConfig.duplicate_into_chunks`.
+``fullcube=True`` are demanding, requiring several hundred gigabytes of RAM.
+To relieve memory requirements, the pipeline may be run on individual
+frequency intervals or "chunks". To run the standard pipeline on each
+chunk and then concatenate the results, use the helper method
+:meth:`faust_imaging.ImageConfig.run_pipeline_chunked`:
+
+.. code-block:: python
+
+   config = ImageConfig(...)  # or `.from_name(...)`
+   config.run_pipeline_chunked(ext='clean', nchunks=100)
+
+The chunked configs may also be created from a normal instance using
+:meth:`faust_imaging.ImageConfig.duplicate_into_chunks` and treated
+individually for more customized processing.
 
 .. code-block:: python
 
@@ -376,14 +388,14 @@ same configuration options are applied in order to reproduce the equivalent
    full_config = ImageConfig(...)
    chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
    for config in chunked_configs[:2]:
-        config.run_pipeline(ext='clean')
+       config.run_pipeline(ext='clean')
 
    # In CASA instance 2, process chunks 2 and 3. Ensure that the same
    # configuration options and modifications are also applied here as well!
    full_config = ImageConfig(...)
    chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
    for config in chunked_configs[2:]:
-        config.run_pipeline(ext='clean')
+       config.run_pipeline(ext='clean')
 
    # Now, in any CASA instance after the above two have finished running,
    # merge the image products.
@@ -391,6 +403,8 @@ same configuration options are applied in order to reproduce the equivalent
    chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
    concat_chunked_cubes(chunked_configs, ext='clean')
 
+
+.. _SetRms:
 
 Manually setting the RMS
 ------------------------
@@ -404,5 +418,68 @@ the desired RMS value to use is known, the
 
    config = ImageConfig(...)
    config.rms = 0.001  # in Jy
+
+
+Imaging Setup 3 SPWs with small chunk sizes
+-------------------------------------------
+Due to the large field-of-view, small beam size, and large number of channels,
+imaging the Setup 3 SPWs poses a formidable data processing challenge (typical
+image dimensions of 3500x3500x1000). Individual Setup 3 cubes can also be about
+10 to 40 times larger in file size (~40 to 200 GB for a single cube) which can
+cause significant issues in CASA usinng machines even with 500 GB RAM.
+
+To effectively process these the Setup 3 SPWs, processing in small frequency
+interval "chunks" is required (see `Chunking`_).  Chunked images of only ~10
+channels however may report biased image RMS values if emission is present
+over most channels (see `SetRms`_). Written below is a recipe for creating a
+few dirty cubes, calculating their RMS values, and then using that RMS value
+for all chunks.
+
+.. code-block:: python
+
+   # First calculate the frequency intervals of the chunks. For N2H+ with ~950
+   # channels and 100 chunks, a typical chunked image has 9 channels.
+   full_config = ImageConfig.from_name('CB68', '93.181GHz_N2Hp')
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=100)
+   # Create dirty cubes and check the RMS values at the low-end, middle, and
+   # high-end of the band. The little helper function below is only for
+   # brevity. Note that the computing the RMS at the middle of the band is
+   # safe for N2H+ since the band center frequency is offset! This is not
+   # always the case.
+   def get_chunk_rms(config):
+       config.make_dirty_cube()
+       return config.rms
+   lo_rms = get_chunk_rms(chunked_configs[ 2])
+   md_rms = get_chunk_rms(chunked_configs[49])
+   hi_rms = get_chunk_rms(chunked_configs[97])
+   # Check the RMS values here to see that they are pretty similar, if within
+   # ~10%, then it is reasonable to simply set it for all chunks.
+
+   # Now remake the config and run all chunks. By setting the RMS of the
+   # prototype instance it is propagated to all of the duplicate instances.
+   full_config = ImageConfig.from_name('CB68', '93.181GHz_N2Hp')
+   full_config.rms = md_rms  # or whatever
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=100)
+   for config in chunked_configs:
+       config.run_pipeline()
+   concat_chunked_cubes(chunked_configs, ext='clean')
+
+Ozone lines are present near several SPWs that raise the RMS values appreciably
+(>30%) close to the band edge (e.g., "231.221GHz_13CS" and "231.322GHz_N2Dp").
+For these SPWs setting a uniform RMS is not appropriate. It is straight
+forward however to increase the RMS for certain chunks or even set the value
+for each chunk individually using an interpolation function.
+
+.. code-block:: python
+
+   # Set the top 15 chunks (85-99) to have double the RMS.
+   rms = 0.003
+   full_config = ImageConfig.from_name('CB68', '93.181GHz_N2Hp')
+   full_config.rms = rms
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=100)
+   for config in chunked_configs:
+       if config.chunk.index > 84:
+           config.rms = 2 * rms
+       config.run_pipeline()
 
 
