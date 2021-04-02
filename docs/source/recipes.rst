@@ -346,7 +346,7 @@ chunk and then concatenate the results, use the helper method
 .. code-block:: python
 
    config = ImageConfig(...)  # or `.from_name(...)`
-   config.run_pipeline_chunked(ext='clean', nchunks=100)
+   config.run_pipeline_chunked(ext='clean', nchunks=4)
 
 The chunked configs may also be created from a normal instance using
 :meth:`faust_imaging.ImageConfig.duplicate_into_chunks` and treated
