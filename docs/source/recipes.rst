@@ -352,8 +352,11 @@ normal instance using :meth:`faust_imaging.ImageConfig.duplicate_into_chunks`.
    for config in chunked_configs:
         config.run_pipeline(ext='clean')
    # Concatenate the final cube products into contiguous versions.
-   im_exts = ('mask', 'residual', 'image', 'image.pbcor.common')
-   concat_chunked_cubes(chunked_configs, ext='clean', im_exts=im_exts)
+   concat_chunked_cubes(chunked_configs, ext='clean')
+
+By default most important image extensions (e.g., '.image', etc.) are concatenated
+by :func:`faust_imaging.concat_chunked_cubes`. Extensions may also be specified
+by the keyword argument ``im_exts``, e.g. ``im_exts=('image', 'model')``.
 
 Note that while in principle running ``tclean`` with the parameter
 ``chankchunks=-1`` applies a similar serial processing of frequency ranges,
@@ -386,8 +389,7 @@ same configuration options are applied in order to reproduce the equivalent
    # merge the image products.
    full_config = ImageConfig(...)
    chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
-   im_exts = ('image',)
-   concat_chunked_cubes(chunked_configs, ext='clean', im_exts=im_exts)
+   concat_chunked_cubes(chunked_configs, ext='clean')
 
 
 Manually setting the RMS

@@ -1657,20 +1657,26 @@ class ImageConfig(object):
         self.postprocess(ext=ext, make_fits=True)
 
 
-def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=('image.pbcor.common',)):
+def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=None):
     """
     Use ``ia.imageconcat`` to concatenate chunked image files into single
     a cube with contiguous data.
 
     Parameters
     ----------
-    chunked_configs : [ImageConfig, ...]
+    chunked_configs : [ImageConfig]
         ImageConfig instances to concatenate.
     ext : str
         Extension name suffix, e.g. 'clean', 'nomask', etc.
-    im_exts : (str, ...)
+    im_exts : [str], None
         Names of image extensions, e.g. 'mask', 'image.pbcor.common', etc.
+        If `None` then a default set of extensions is processed. The default
+        extensions are "image.common", "image.common.hanning",
+        "image.pbcor.common", "mask", "model", "pb", "psf", "residual".
     """
+    if im_exts is None:
+        im_exts = ('image.common', 'image.common.hanning', 'image.pbcor.common',
+                'mask', 'model', 'pb', 'psf', 'residual')
     # Validate input.
     im_exts = [im_exts] if isinstance(im_exts, str) else im_exts
     im_exts = [s.lstrip('.') for s in im_exts]
@@ -1682,11 +1688,11 @@ def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=('image.pbcor.com
     # Concatenate chunk files for each image extension name.
     for im_ext in im_exts:
         outfile = '{0}.{1}'.format(imagebase, im_ext)
-        log_post(':: Concatenating file "{0}"'.format(outfile))
         infiles = [
                 '{0}.{1}'.format(s, im_ext)
                 for s in chunked_imagebases
         ]
+        log_post(':: Concatenating file "{0}"'.format(outfile))
         if_exists_remove(outfile)
         ia.imageconcat(
                 outfile=outfile,
