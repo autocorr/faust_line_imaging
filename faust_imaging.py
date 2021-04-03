@@ -614,7 +614,9 @@ def replace_existing_file_with_new(old_filen, new_filen):
     `old_filen` will be removed and replaced by `new_filen`.
     """
     if not os.path.exists(new_filen):
-        raise IOError('File does not exist: "{0}"'.format(new_filen))
+        msg = 'File not found: "{0}"'.format(new_filen)
+        log_post(msg, priority='WARN')
+        raise IOError(msg)
     rmtables(old_filen)
     # If a parallel image, then will not be recognized as a table in the call
     # to `rmtables`
@@ -878,7 +880,9 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
         chans = '{0}~{1}'.format(chan_start, chan_end)
     # check if directory exists
     if not os.path.exists(imagename):
-        raise IOError('File or directory not found: "{0}"'.format(imagename))
+        msg = '-- File or directory not found: "{0}"'.format(imagename)
+        log_post(msg, priority='WARN')
+        raise IOError(msg)
     # run imstat over the cube and extract the calculated RMS
     stats = imstat(imagename=imagename, axes=[0, 1], chans=chans)
     mad_arr = stats['medabsdevmed']
@@ -914,6 +918,10 @@ def effective_beamwidth_from_image(imagename):
     ----------
     imagename : str
     """
+    if not os.path.exists(imagename):
+        msg = '-- File not found to compute beamwidth: "{0}"'.format(imagename)
+        log_post(msg, priority='WARN')
+        raise IOError(msg)
     header = imhead(imagename)
     beam_areas = np.array([
             v['*0']['major']['value'] * v['*0']['minor']['value']
@@ -1176,9 +1184,10 @@ class ImageConfig(object):
         if self._rms is None:
             imagename = '{0}.image'.format(self.dirty_imagebase)
             if not os.path.exists(imagename):
-                log_post('-- File not found to compute RMS from: {0}'.format(imagename))
+                msg = '-- File not found to compute RMS: "{0}"'.format(imagename)
+                log_post(msg, priority='WARN')
                 log_post('-- Has the `.make_dirty_cube` been run?')
-                raise IOError
+                raise IOError(msg)
             rms = calc_rms_from_image(imagename)
             log_post('-- RMS {0} Jy'.format(rms))
             return rms
@@ -1532,9 +1541,10 @@ class ImageConfig(object):
         """
         imagename = self.nomask_imagebase
         if not os.path.exists(imagename+'.image'):
-            log_post('-- File not found: {0}.image'.format(imagename))
+            msg = '-- File not found: "{0}.image"'.format(imagename)
+            log_post(msg, priority='WARN')
             log_post('-- Has the unmasked call to tclean been run?')
-            raise IOError
+            raise IOError(msg)
         make_multiscale_joint_mask(imagename, self.rms, sigma=sigma,
                 mask_ang_scales=self.mask_ang_scales)
 
