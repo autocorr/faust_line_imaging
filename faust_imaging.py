@@ -955,7 +955,7 @@ def make_multiscale_joint_mask(imagename, rms, sigma=5.0, mask_ang_scales=(0, 1,
     log_post(':: Creating threshold based mask')
     n_scales = len(mask_ang_scales)
     original_image = '{0}.image'.format(imagename)
-    beamwidth = effective_beamwidth_from_image(imagename)
+    beamwidth = effective_beamwidth_from_image(original_image)
     pb_image = '{0}.pb'.format(imagename)
     base_names = [
             '{0}_smooth{1:.3f}'.format(imagename, s)
