@@ -794,6 +794,7 @@ def calc_chunk_freqs(imagebase, nchunks=1):
     assert chan_per_chunk.sum() == nchan_total
     # Calculate the starting frequencies by iteratively adding the chunk
     # bandwidth to the last starting frequency.
+    chunks = []
     freq = freq_start
     for n in chan_per_chunk:
         freq_withunit = qa.tos(qa.quantity(freq, spec_unit))
@@ -1151,6 +1152,10 @@ class ImageConfig(object):
         return cls(dset, spw, **kwargs)
 
     @property
+    def is_chunked(self):
+        return self.chunk is not None
+
+    @property
     def dirty_imagebase(self):
         return self.get_imagebase(ext=DIRTY_EXT)
 
@@ -1186,10 +1191,10 @@ class ImageConfig(object):
 
     @property
     def selected_start_nchan(self):
-        if self.fullcube and self.chunk is None:
+        if self.fullcube and not self.is_chunked:
             # Restrict coverage to common coverage cross EBs.
             return calc_common_coverage_range(self.dirty_imagebase)
-        elif self.chunk is not None:
+        elif self.is_chunked:
             return self.chunk.start, self.chunk.nchan
         else:
             # Restrict coverage to range around source velocity.
@@ -1250,7 +1255,7 @@ class ImageConfig(object):
         [ImageConfig]
             List of instances with properties set for chunking.
         """
-        if self.chunk is not None:
+        if self.is_chunked:
             raise ValueError("Config is already chunked: {0}".format(self.chunk))
         # A full-bandwidth cube must exist to compute the frequency ranges. Use
         # the full dirty image if it exists, otherwise use or make a tiny image
@@ -1279,6 +1284,7 @@ class ImageConfig(object):
             config = deepcopy(self)
             config.spw = config.spw.with_chunk(chunk)
             config.chunk = chunk
+            config.chunked = True
             chunked_configs.append(config)
         return chunked_configs
 
@@ -1414,11 +1420,11 @@ class ImageConfig(object):
         # When imaging the full cube without chunking, image the full spectral
         # coverage over all array configurations (nchan=-1) but use the
         # pre-computed range when imaging a chunk.
-        if self.chunk is None:
+        if self.is_chunked:
+            start, nchan = self.selected_start_nchan
+        else:
             start = None
             nchan = -1
-        else:
-            start, nchan = self.selected_start_nchan
         # run tclean
         delete_all_extensions(imagename)
         tclean(
@@ -1688,7 +1694,9 @@ class ImageConfig(object):
         self.clean_line_nomask(sigma=nomask_sigma)
         self.make_seed_mask(sigma=seedmask_sigma)
         self.clean_line(mask_method='seed+multithresh', ext=ext, sigma=clean_sigma)
-        self.postprocess(ext=ext, make_fits=True)
+        # Unnecessary to post-process a chunked image.
+        if not self.is_chunked:
+            self.postprocess(ext=ext, make_fits=True)
 
     def run_pipeline(self, ext='clean', use_chunking=True, nchunks=None,
             nomask_sigma=4.5, seedmask_sigma=5.0, clean_sigma=2.0):
@@ -1731,7 +1739,7 @@ class ImageConfig(object):
                 seedmask_sigma, 'clean_sigma': clean_sigma}
         # If already chunked or explicitly selected to not use chunking, then
         # do not perform additional chunking and simply run the pipeline tasks.
-        if self.chunk is not None or not use_chunking:
+        if self.is_chunked or not use_chunking:
             self.run_pipeline_tasks(ext=ext, **sigma_kwargs)
         else:
             if nchunks is None:
@@ -1749,6 +1757,9 @@ class ImageConfig(object):
             for config in chunked_configs:
                 config.run_pipeline_tasks(ext=ext, **sigma_kwargs)
             concat_chunked_cubes(chunked_configs, ext=ext)
+            # The concatenated products should now exist, so this
+            # post-processing step will act on them and not the chunks.
+            self.postprocess(ext=ext, make_fits=True)
 
 
 def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=None):
@@ -1765,12 +1776,10 @@ def concat_chunked_cubes(chunked_configs, ext='clean', im_exts=None):
     im_exts : [str], None
         Names of image extensions, e.g. 'mask', 'image.pbcor.common', etc.
         If `None` then a default set of extensions is processed. The default
-        extensions are "image.common", "image.common.hanning",
-        "image.pbcor.common", "mask", "model", "pb", "psf", "residual".
+        extensions are "image", "mask", "model", "pb", "psf", "residual".
     """
     if im_exts is None:
-        im_exts = ('image.common', 'image.common.hanning', 'image.pbcor.common',
-                'mask', 'model', 'pb', 'psf', 'residual')
+        im_exts = ('image', 'mask', 'model', 'pb', 'psf', 'residual')
     # Validate input.
     im_exts = [im_exts] if isinstance(im_exts, str) else im_exts
     im_exts = [s.lstrip('.') for s in im_exts]

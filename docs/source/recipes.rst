@@ -367,6 +367,9 @@ individually for more customized processing.
         config.run_pipeline(ext='clean')
    # Concatenate the final cube products into contiguous versions.
    concat_chunked_cubes(chunked_configs, ext='clean')
+   # Now that all the concatenated image products exist, run the post-
+   # processing on them using the *non-chunked* instance.
+   full_config.postprocess(ext='clean')
 
 By default most important image extensions (e.g., '.image', etc.) are concatenated
 by :func:`faust_imaging.concat_chunked_cubes`. Extensions may also be specified
@@ -404,6 +407,7 @@ same configuration options are applied in order to reproduce the equivalent
    full_config = ImageConfig(...)
    chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
    concat_chunked_cubes(chunked_configs, ext='clean')
+   full_config.postprocess(ext='clean')
 
 
 .. _SetRms:
@@ -465,6 +469,7 @@ for all chunks.
    for config in chunked_configs:
        config.run_pipeline()
    concat_chunked_cubes(chunked_configs, ext='clean')
+   full_config.postprocess(ext='clean')
 
 Ozone lines are present near several SPWs that raise the RMS values appreciably
 (>30%) close to the band edge (e.g., "231.221GHz_13CS" and "231.322GHz_N2Dp").
