@@ -332,84 +332,6 @@ mask and (b) do not meet a significance cut on a Hanning smoothed cube. The
 moments are computed using the unsmoothed data.
 
 
-.. _Chunking:
-
-Frequency-chunked image processing
-----------------------------------
-The memory requirements for imaging the full spectral windows using the
-``fullcube=True`` are demanding, requiring several hundred gigabytes of RAM.
-To relieve memory requirements, the pipeline may be run on individual
-frequency intervals or "chunks". To default behaviour of the pipeline
-:meth:`faust_imaging.ImageConfig.run_pipeline` is to chunk and then concatenate
-the results:
-
-.. code-block:: python
-
-   config = ImageConfig(...)  # or `.from_name(...)`
-   config.run_pipeline(ext='clean')
-
-The number of chunks can be controlled with the ``nchunks`` parameter.  If left
-unset, then the number of chunks is chosen heuristically.  The chunked configs
-may also be created from a normal instance using
-:meth:`faust_imaging.ImageConfig.duplicate_into_chunks` and treated
-individually for more customized processing.
-
-.. code-block:: python
-
-   # Initialize an image configuration instance with the desired properties.
-   full_config = ImageConfig(...)
-   # Create 4 chunks with properties inherited from the above, full instance.
-   # Note that if a ".sumwt" file does not exist, a dirty image will be
-   # made of a small field in order to calculate it first.
-   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
-   # Standard pipeline processing may now proceed on each chunked config.
-   for config in chunked_configs:
-        config.run_pipeline(ext='clean')
-   # Concatenate the final cube products into contiguous versions.
-   concat_chunked_cubes(chunked_configs, ext='clean')
-   # Now that all the concatenated image products exist, run the post-
-   # processing on them using the *non-chunked* instance.
-   full_config.postprocess(ext='clean')
-
-By default most important image extensions (e.g., '.image', etc.) are concatenated
-by :func:`faust_imaging.concat_chunked_cubes`. Extensions may also be specified
-by the keyword argument ``im_exts``, e.g. ``im_exts=('image', 'model')``.
-
-Note that while in principle running ``tclean`` with the parameter
-``chankchunks=-1`` applies a similar serial processing of frequency ranges,
-unfortunately problems persist.  The most serious issues observed are that the
-final concatentation step in ``tclean`` can segfault, and that copying the
-internal mask files using ``makemask`` also frequently fails for large image
-cubes.
-
-The pipeline procedures may also be run in different instances in CASA to
-process parts of the image in parallel. To do so, simply ensure that the
-same configuration options are applied in order to reproduce the equivalent
-``ImageConfig`` instances, as below:
-
-.. code-block:: python
-
-   # In CASA instance 1, process chunks 0 and 1
-   full_config = ImageConfig(...)
-   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
-   for config in chunked_configs[:2]:
-       config.run_pipeline(ext='clean')
-
-   # In CASA instance 2, process chunks 2 and 3. Ensure that the same
-   # configuration options and modifications are also applied here as well!
-   full_config = ImageConfig(...)
-   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
-   for config in chunked_configs[2:]:
-       config.run_pipeline(ext='clean')
-
-   # Now, in any CASA instance after the above two have finished running,
-   # merge the image products.
-   full_config = ImageConfig(...)
-   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
-   concat_chunked_cubes(chunked_configs, ext='clean')
-   full_config.postprocess(ext='clean')
-
-
 .. _SetRms:
 
 Manually setting the RMS
@@ -424,6 +346,88 @@ the desired RMS value to use is known, the
 
    config = ImageConfig(...)
    config.rms = 0.001  # in Jy
+
+
+.. _Chunking:
+
+Frequency-chunked image processing
+----------------------------------
+The memory requirements for imaging the full spectral windows using the
+``fullcube=True`` are demanding, requiring several hundred gigabytes of RAM.
+In principle running ``tclean`` with the parameter ``chankchunks=-1``
+serially processes individual frequency ranges to conserve memory,
+unfortunately problems persist.  The most serious issues observed are that the
+final concatentation step in ``tclean`` can segfault, and that copying the
+internal mask files using ``makemask`` also frequently fails for large image
+cubes.
+
+To relieve memory requirements, the pipeline may be run on individual
+frequency intervals or "chunks". To default behaviour of the pipeline
+:meth:`faust_imaging.ImageConfig.run_pipeline` is to chunk and then concatenate
+the results:
+
+.. code-block:: python
+
+   config = ImageConfig(...)  # or `.from_name(...)`
+   config.run_pipeline(ext='clean')
+
+The number of chunks can be controlled with the ``nchunks`` parameter.  If left
+unset, then the number of chunks is chosen heuristically.  The chunked configs
+may also be created from a normal instance using
+:meth:`faust_imaging.ImageConfig.duplicate_into_chunks` and treated
+individually for more customized processing. This creates an instance of
+:class:`faust_imaging.ChunkedConfigSet` which both encapsulates the chunked
+images and provides several helper methods.
+
+.. code-block:: python
+
+   # Initialize an image configuration instance with the desired properties.
+   full_config = ImageConfig(...)
+   # Create 4 chunks with properties inherited from the above, full instance.
+   # Note that if a ".sumwt" file does not exist, a dirty image will be
+   # made of a small field in order to calculate it first.
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   # Standard pipeline processing may now proceed on each chunked config.
+   for config in chunked_configs:
+        config.run_pipeline(ext='clean')
+   # Post-process each chunked individually but using information from
+   # all of the runs (such as for determining the common beam)
+   chunked_configs.postprocess(ext='clean')
+
+By default, most image extensions (e.g., '.image', etc.) are concatenated
+by :meth:`faust_imaging.ChunkedConfigSet.postprocess`. Images may also
+be explicitly concatenated with :meth:`faust_imaging.ChunkedConfigSet.concat_cubes`.
+
+The pipeline procedures may also be run in different instances in CASA to
+process parts of the image in parallel. To do so, simply ensure that the
+same configuration options are applied in order to reproduce the equivalent
+``ImageConfig`` instances, as below:
+
+.. code-block:: python
+
+   # In CASA instance 1, process chunks 0 and 1. Note that Python syntax for
+   # slicing (i.e., ":2") is inclusive on the lower limit but exclusive on
+   # the upper limit.
+   full_config = ImageConfig(...)
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   first_half = chunked_configs[:2]
+   for config in first_half:
+       config.run_pipeline(ext='clean')
+
+   # In CASA instance 2, process chunks 2 and 3. Ensure that the same
+   # configuration options and modifications are also applied here as well!
+   full_config = ImageConfig(...)
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   second_half = chunked_configs[2:]
+   for config in second_half:
+       config.run_pipeline(ext='clean')
+
+   # Now, in any CASA instance after the above two have finished running,
+   # merge the image products.
+   full_config = ImageConfig(...)
+   chunked_configs = full_config.duplicate_into_chunks(nchunks=4)
+   # Post-process each chunk separately and then concatenate the results.
+   chunked_configs.postprocess(ext='clean')
 
 
 Imaging Setup 3 SPWs with small chunk sizes
@@ -468,8 +472,7 @@ for all chunks.
    chunked_configs = full_config.duplicate_into_chunks(nchunks=100)
    for config in chunked_configs:
        config.run_pipeline()
-   concat_chunked_cubes(chunked_configs, ext='clean')
-   full_config.postprocess(ext='clean')
+   chunked_configs.postprocess(ext='clean')
 
 Ozone lines are present near several SPWs that raise the RMS values appreciably
 (>30%) close to the band edge (e.g., "231.221GHz_13CS" and "231.322GHz_N2Dp").
