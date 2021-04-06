@@ -371,6 +371,9 @@ the results:
    config = ImageConfig(...)  # or `.from_name(...)`
    config.run_pipeline(ext='clean')
 
+   # or explicitly
+   config.run_pipeline(ext='clean', use_chunking=True, nchunks=4)
+
 The number of chunks can be controlled with the ``nchunks`` parameter.  If left
 unset, then the number of chunks is chosen heuristically.  The chunked configs
 may also be created from a normal instance using
