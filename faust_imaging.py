@@ -1834,35 +1834,24 @@ class ChunkedConfigSet(object):
             Beam parameters formatted as strings with unit labels: major axis
             (arcsec), minor axis (arcsec), position angle (deg).
         """
-        def beam_from_entry(entry):
-            stokes0 = entry['*0']
-            bmaj = stokes0['major']['value']
-            bmin = stokes0['minor']['value']
-            pa   = stokes0['positionangle']['value']
-            return bmaj, bmin, pa
-        # Iteratively identify the largest beam among all the chunked images
-        # using the per-plane beam values in the header.
-        largest = 0
-        common = (None, None, None)
+        # Iteratively identify the largest beam among the common beams of all
+        # the chunked images.
+        max_area = 0
+        common = None
         for config in self.configs:
             imagebase = config.get_imagebase(ext=ext)
             imagename = '{0}.image'.format(imagebase)
-            header = imhead(imagename)
-            bdict = header['perplanebeams']['beams']
-            beams = [beam_from_entry(v) for v in bdict.values()]
-            bmaj, bmin, pa = np.array(beams).T
-            local_max = (bmaj * bmin).max()
-            assert not np.isnan(local_max)
-            ix_max = (bmaj * bmin).argmax()
-            if local_max > largest:
-                largest = local_max
-                common = bmaj[ix_max], bmin[ix_max], pa[ix_max]
-        assert common[0] is not None
-        return {
-                'major': '{0}arcsec'.format(common[0]),
-                'minor': '{0}arcsec'.format(common[1]),
-                'pa': '{0}deg'.format(common[2]),
-        }
+            ia.open(imagename)
+            beam = ia.commonbeam()
+            ia.close()
+            ia.done()
+            area = beam['major']['value'] * beam['minor']['value']
+            assert not np.isnan(area)
+            if area > max_area:
+                max_area = area
+                common = beam
+        assert common is not None
+        return common
 
     def concat_cubes(self, ext='clean', im_exts=None):
         """
