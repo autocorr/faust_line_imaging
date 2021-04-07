@@ -1255,7 +1255,7 @@ class ImageConfig(object):
                 spw_ids_for_vis.extend(matches)
         return [str(n) for n in spw_ids_for_vis]
 
-    def duplicate_into_chunks(self, nchunks=1):
+    def duplicate_into_chunks(self, nchunks=None):
         """
         Duplicate the image configuration into multiple versions set to be chunked
         in frequency. This eases memory requirements because each smaller image
@@ -1267,8 +1267,9 @@ class ImageConfig(object):
 
         Parameters
         ----------
-        nchunks : int
-            Number of chunks to create.
+        nchunks : int, None
+            Number of chunks to create. If unset then the number of chunks is
+            chosen using a heuristic.
 
         Returns
         -------
@@ -1278,6 +1279,18 @@ class ImageConfig(object):
         """
         if self.is_chunked:
             raise ValueError("Config is already chunked: {0}".format(self.chunk))
+        if nchunks is None:
+            is_s12 = self.spw.setup in (1, 2)
+            is_fdm = self.spw.mol_name != 'cont'
+            nchunk_map = {
+                    #  S12?   FDM?
+                    ( True,  True):   4,  # S1/S2 FDM
+                    ( True, False):  40,  # S1/S2 TDM
+                    (False,  True): 100,  # S3    FDM
+                    (False, False): 200,  # S3    TDM
+            }
+            nchunks = nchunk_map[(is_s12, is_fdm)]
+        assert isinstance(nchunks, int) and nchunks > 0
         # A full-bandwidth cube must exist to compute the frequency ranges. Use
         # the full dirty image if it exists, otherwise use or make a tiny image
         # stamp for those purposes.
@@ -1759,7 +1772,7 @@ class ImageConfig(object):
         nchunks : int, None
             Number of approximately uniform frequency intervals to chunk image
             products into. If `None` then the number of chunks is chosen
-            heuristically.
+            by heuristic.
         nomask_sigma : number
             Global clean threshold for the un-masked clean run.
         seedmask_sigma : number
@@ -1775,17 +1788,6 @@ class ImageConfig(object):
         if self.is_chunked or not use_chunking:
             self.run_pipeline_tasks(ext=ext, **sigma_kwargs)
         else:
-            if nchunks is None:
-                is_s12 = self.spw.setup in (1, 2)
-                is_fdm = self.spw.mol_name != 'cont'
-                nchunk_map = {
-                        #  S12?   FDM?
-                        ( True,  True):   4,  # S1/S2 FDM
-                        ( True, False):  40,  # S1/S2 TDM
-                        (False,  True): 100,  # S3    FDM
-                        (False, False): 200,  # S3    TDM
-                }
-                nchunks = nchunk_map[(is_s12, is_fdm)]
             chunked_configs = self.duplicate_into_chunks(nchunks=nchunks)
             for config in chunked_configs:
                 config.run_pipeline_tasks(ext=ext, **sigma_kwargs)
