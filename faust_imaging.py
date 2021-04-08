@@ -1900,12 +1900,30 @@ class ChunkedConfigSet(object):
             ia.close()
             ia.done()
 
-    def postprocess(self, ext='clean'):
+    def postprocess(self, ext='clean', use_existing_except=None):
+        """
+        Parameters
+        ----------
+        ext : str
+        use_existing_except : Iterable(int), None
+            If post-processing has already been run, but a few chunks have been
+            modified (by manual cleaning for example), then only re-process the
+            chunks set by this variable. If left unset (None), then all chunks
+            are processed.
+        """
+        assert isinstance(use_existing_except, Iterable)
         beam = self.get_common_beam(ext=ext)
-        imagebase = self.get_imagebase(ext=ext)
         assert beam is not None
-        for config in self.configs:
-            config.postprocess(ext=ext, make_fits=False, make_hanning=False, beam=beam)
+        imagebase = self.get_imagebase(ext=ext)
+        postproc_kwargs = {
+                'ext': ext, 'make_fits': False, 'make_hanning': False, 'beam': beam,
+        }
+        if use_existing_except is None:
+            for config in self.configs:
+                config.postprocess(**postproc_kwargs)
+        else:
+            for ix in use_existing_except:
+                self.configs[ix].postprocess(**postproc_kwargs)
         self.concat_cubes(ext=ext)
         hanning_smooth_image('{0}.image.common'.format(imagebase))
         export_fits('{0}.image.pbcor.common'.format(imagebase))

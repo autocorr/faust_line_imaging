@@ -496,3 +496,104 @@ for each chunk individually using an interpolation function.
        config.run_pipeline()
 
 
+Parallelized computation with multiple CASA processes
+-----------------------------------------------------
+By default the pipeline will chunk the images and process each chunk in serial.
+Because this proceeds quickly for chunks that are mostly noise and reduces the
+gridding overhead on chunks with emission, this alone reduces the run-time.
+Helper scripts/templates are provided however to improve the performance
+further by running multiple instances of CASA simultaneously to process the
+image chunks in parallel. Example scripts may be found in the "pipe_scripts"
+directory in the pipeline
+`GitHub repository <https://github.com/autocorr/faust_line_imaging>`_.
+The shell files "run_pipe.sh" and "qsub_run_pipe.sh" may be lightly modified
+for job name and resources requested. The CASA Python files are tailored
+to specific example usages, such as parallelizing over SPWs (one SPW per job)
+or parallelizing over the chunks of a single SPW (multiple jobs per SPW).
+Recipes are included for:
+
+    * ``run_pipe_cb68_setup1_continuum.py`` Chunk the Setup 1 continuum SPW
+      into 40 chunks (the default) and process the chunks in parallel. This
+      considerably improves run-time over processing each chunk sequentially.
+    * ``run_pipe_cb68_cs.py`` Chunk the CS (5-4) SPW into 50 chunks (the
+      default is 4) and process the chunks in parallel. This script is useful
+      for quickly processing one window well-characterized by a single RMS (not
+      the ones near telluric lines).
+    * ``run_pipe_cb68_all_setup1.py`` Process the SPWs in parallel for all
+      Setup 1 windows (including the continuum SPW) using the default settings.
+      For 13 SPWs and 8 CASA instances, each instance will process 1-2 SPWs.
+      This script is useful for processing a complete Setup in a
+      straightforward way.
+
+Personal machine
+~~~~~~~~~~~~~~~~
+To run the pipeline in parallel on a user's personal machine or an interactive
+node on nmpost, first copy the "run_pipe.py" and "run_pipe.sh" files from the
+GitHub repository and place them in the directory specified by ``PROD_DIR``
+(i.e., where you run CASA). The template files can be renamed to aid
+organization, simply ensure that the name of the Python script ("run_pipe.py")
+matches what is referenced in the shell script ("run_pipe.sh").
+
+In the shell script, set the ``NBATCHES`` variable for the number of CASA
+processes/sessions used.  From a limited number of experiments, dividing the
+number of available CPU cores by 2-3 provides reasonably good CPU utilization.
+The number of jobs set by this variable must be greater than or equal to the
+number of chunks or targets set in the Python script (each job must have at
+least one thing to process!).
+
+Next in the Python script, modify the template function ``_get_config`` for the
+desired field, transition, and number of chunks. Global configuration settings
+can also be set here by modifying the attributes of ``full_config`` (such as
+the :attr:`faust_imaging.ImageConfig.rms` for example, or the auto-multithresh
+parameters).  Note that the ``_RUN_SUFFIX`` global variable may be changed to
+distinguish different runs, but intermediate products such as the "nomask" and
+"dirty" products will be over-written. For science cases that require per-chunk
+configuration, program logic may be added to ``_run_subset``.
+
+Finally, execute the shell script (``./run_pipe.sh``, say). Files for both the
+CASA log and the STDOUT terminal output will be created for each CASA process
+(one can monitor progress in real time with ``tail -f file.log``).
+
+Once the jobs are finished running, the chunk files need to be post-processed.
+Currently this post-processing can only operate using a single thread, so it
+is not necessary to run it from the above shell script. From a CASA session
+run:
+
+.. code:: python
+
+   execfile('run_pipe.py')
+   _postprocess()
+
+If issues in the images are discovered at certain frequencies/channels, individual
+chunks may be re-run without re-running all of the others.
+
+.. code:: python
+
+   execfile('run_pipe.py')
+   full_config, chunked_configs = _get_config()
+   # If for example, "chunk42" out of 99 has issues, select it, and apply new
+   # pipeline procedures.
+   config_with_issues = chunked_configs[42]
+   config_with_issues.clean_line(ext='clean', interactive=True, restart=True,
+           sigma=3)
+   # Remake the products for chunk42, but use the existing products from the
+   # other chunks. Concatenate all results together into new final cubes.
+   chunked_configs.postprocess(ext='clean', use_existing_except=[42])
+   # Alternatively, just re-make everything.
+   #chunked_configs.postprocess(ext='clean')
+
+Torque job submission
+~~~~~~~~~~~~~~~~~~~~~
+To run the pipeline in parallel using Torque on the NM or CV post-processing
+computing clusters ("nmpost"), copy the "run_pipe.py" and "qsub_run_pipe.sh"
+templates from the GitHub repository and place them in the ``PROD_DIR``
+directory. Change the global variables as described above. The number of CPUs
+requested on the line:
+
+.. code:: bash
+
+   #PBS -l nodes=1:ppn=16
+
+should be more than the number of CASA instances/processes set by ``NBATCHES``.
+
+
