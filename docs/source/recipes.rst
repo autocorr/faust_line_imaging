@@ -362,9 +362,9 @@ internal mask files using ``makemask`` also frequently fails for large image
 cubes.
 
 To relieve memory requirements, the pipeline may be run on individual
-frequency intervals or "chunks". To default behaviour of the pipeline
-:meth:`faust_imaging.ImageConfig.run_pipeline` is to chunk and then concatenate
-the results:
+frequency intervals or "chunks". By default the pipeline procedure
+:meth:`faust_imaging.ImageConfig.run_pipeline` will chunk and concatenate the
+results:
 
 .. code-block:: python
 
@@ -432,6 +432,8 @@ same configuration options are applied in order to reproduce the equivalent
    # Post-process each chunk separately and then concatenate the results.
    chunked_configs.postprocess(ext='clean')
 
+For specific example recipes, please refer to the `ParallelCasa`_ section.
+
 
 Imaging Setup 3 SPWs with small chunk sizes
 -------------------------------------------
@@ -495,6 +497,8 @@ for each chunk individually using an interpolation function.
            config.rms = 2 * rms
        config.run_pipeline()
 
+
+.. _ParallelCasa:
 
 Parallelized computation with multiple CASA processes
 -----------------------------------------------------

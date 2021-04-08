@@ -8,7 +8,7 @@ In this example:
 
     * "qsub_run_pipe.sh" requests 16 cores and spawns 8 CASA processes
     * The CB68 CS (5-4) cube is sharded in 50 chunks and distributed
-      across the 8 CASA processes. For the standard 4 chunks
+      across the 8 CASA processes.
     * Because the chunks are so narrow (470 chan / 50 chunks ~ 9 chan per chunk)
       a fixed, measured RMS of 2.52 mJy/beam is set for all chunks. To
       the RMS per-chunk, simply omit this line.
