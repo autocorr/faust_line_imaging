@@ -513,17 +513,18 @@ or parallelizing over the chunks of a single SPW (multiple jobs per SPW).
 Recipes are included for:
 
     * ``run_pipe_cb68_setup1_continuum.py`` Chunk the Setup 1 continuum SPW
-      into 40 chunks (the default) and process the chunks in parallel. This
-      considerably improves run-time over processing each chunk sequentially.
+      into 40 chunks (the default) and process batches of chunks in parallel.
+      This considerably improves run-time performance compared to processing
+      each chunk sequentially.
     * ``run_pipe_cb68_cs.py`` Chunk the CS (5-4) SPW into 50 chunks (the
-      default is 4) and process the chunks in parallel. This script is useful
-      for quickly processing one window well-characterized by a single RMS (not
-      the ones near telluric lines).
-    * ``run_pipe_cb68_all_setup1.py`` Process the SPWs in parallel for all
-      Setup 1 windows (including the continuum SPW) using the default settings.
-      For 13 SPWs and 8 CASA instances, each instance will process 1-2 SPWs.
-      This script is useful for processing a complete Setup in a
-      straightforward way.
+      default is 4) and process the chunks in parallel. This is useful for
+      quickly processing one window that is well-characterized by a single RMS
+      (i.e., not those near telluric lines).
+    * ``run_pipe_cb68_all_setup1.py`` Process all of the SPWs in parallel for
+      Setup 1 (including the continuum SPW) using the default settings. For 13
+      SPWs and 8 CASA instances, each instance will process 1-2 SPWs. This
+      script is useful for processing a complete Setup in a straightforward
+      way.
 
 Personal machine
 ~~~~~~~~~~~~~~~~
