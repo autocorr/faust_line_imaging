@@ -1435,7 +1435,7 @@ class ImageConfig(object):
         data = ia.getchunk()
         ia.close()
         ia.done()
-        if all(data == 0):
+        if np.all(data == 0):
             log_post('-- Failed to make PSF file, sumwt is all zeros: "{0}"'.format(sumwt_filen))
             raise RuntimeError
 
