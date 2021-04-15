@@ -110,9 +110,11 @@ AUTOM_KWARGS = {
         'usemask': 'auto-multithresh',
         'noisethreshold': 5.0,
         'sidelobethreshold': 2.0,
-        'lownoisethreshold': 1.0,
+        'lownoisethreshold': 1.5,
         'minbeamfrac': 0.001,
-        'negativethreshold': 5.0,
+        'negativethreshold': 7.0,
+        'smoothfactor': 0.5,
+        'cutthreshold': 0.05,
         'growiterations': 1000,
         'dogrowprune': False,
         'fastnoise': False,
@@ -1573,7 +1575,7 @@ class ImageConfig(object):
         make_multiscale_joint_mask(imagename, self.rms, sigma=sigma,
                 mask_ang_scales=self.mask_ang_scales)
 
-    def clean_line(self, mask_method='seed+multithresh', sigma=2,
+    def clean_line(self, mask_method='seed+multithresh', sigma=3.0,
             ext=None, restart=False, interactive=False):
         """
         Primary interface for calling `tclean` to deconvolve spectral windows.
@@ -1724,7 +1726,7 @@ class ImageConfig(object):
             export_fits(image_to_export)
 
     def run_pipeline_tasks(self, ext='clean', nomask_sigma=4.5,
-            seedmask_sigma=5.0, clean_sigma=2.0):
+            seedmask_sigma=5.0, clean_sigma=3.0):
         """
         Helper method to run the pipeline tasks in sequence with reasonable
         default parameters. See :meth:`run_pipeline` for further description.
