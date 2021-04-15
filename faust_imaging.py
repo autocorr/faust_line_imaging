@@ -1913,7 +1913,6 @@ class ChunkedConfigSet(object):
             chunks set by this variable. If left unset (None), then all chunks
             are processed.
         """
-        assert isinstance(use_existing_except, Iterable)
         beam = self.get_common_beam(ext=ext)
         assert beam is not None
         imagebase = self.get_imagebase(ext=ext)
