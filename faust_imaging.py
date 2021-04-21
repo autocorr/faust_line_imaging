@@ -189,10 +189,14 @@ class DataSet(object):
                 3 : Band 3,  90 GHz
         kind : str
             Datset descriptor for which measurement set files to use. Valid
-            values include: ('joint', '12m', '7m').
+            values include: ('joint', '12m', '7m'). Note that only 12m data is
+            availabe for Setup 3.
         """
         assert field in ALL_FIELD_NAMES
         assert setup in (1, 2, 3)
+        if setup == 3 and kind != '12m':
+            log_post('-- Reverting `kind` to "12m" for Setup 3', priority='WARN')
+            kind = '12m'
         kind = kind.lower()
         self.field = field
         self.target = ALL_TARGETS[field]
