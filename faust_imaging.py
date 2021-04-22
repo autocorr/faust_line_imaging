@@ -1751,7 +1751,7 @@ class ImageConfig(object):
             self.postprocess(ext=ext, make_fits=True)
 
     def run_pipeline(self, ext='clean', use_chunking=True, nchunks=None,
-            nomask_sigma=4.5, seedmask_sigma=5.0, clean_sigma=2.0):
+            nomask_sigma=4.5, seedmask_sigma=5.0, clean_sigma=3.0):
         """
         Run all pipeline tasks with default parameters. Custom recipes should
         call the individual methods in sequence. The final pipeline product
