@@ -26,8 +26,10 @@ export NBATCHES=8
 
 # Before starting the jobs, first create the image files required for
 # determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If this
-# file already exists, it will use the existing and move on. Note that this can
-# be commented ouut for the "run one SPW per process" sorts of batch scripts.
+# file already exists, it will use the existing and move on.
+# Note that the startup and postprocessing lines can be commented out for
+# scripts that do not require them (such as the "run one SPW in serial per CASA
+# instance" sorts of batch jobs).
 casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _get_config()" >& casa_imaging_${PBS_JOBNAME}_startup.out
 # Start up the number of jobs asynchronously by appending "&"
 for ((i=0; i<$NBATCHES; i++))
@@ -35,5 +37,6 @@ do
     xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
 done
 wait
+casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
 
 

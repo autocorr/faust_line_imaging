@@ -17,6 +17,8 @@ export NBATCHES=8
 # Before starting the jobs, first create the image files required for
 # determining the chunk starting frequencies. If this file already exists, it
 # will use the existing and move on.
+# If the script does not require them, simply comment out or remove the startup
+# and postprocessing lines.
 casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _get_config()" >& casa_imaging_${JOBNAME}_startup.out
 # Start up the number of CASA instances asynchronously by appending "&"
 for ((i=0; i<$NBATCHES; i++))
@@ -24,5 +26,6 @@ do
     casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${JOBNAME}_${i}.out &
 done
 wait
+casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${JOBNAME}_postprocess.out
 
 
