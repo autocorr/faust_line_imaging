@@ -15,6 +15,7 @@ cd $PBS_O_WORKDIR  # directory where `qsub` was executed.
 CASAPATH=/home/casa/packages/RHEL7/release/current
 PATH=$CASAPATH/bin:$PATH
 SCRIPTNAME=$PBS_O_WORKDIR/run_pipe.py
+alias RUN_CASA="xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c"
 
 # The number of CASA instances or jobs/batches should be about half the number
 # of CPUs requested (i.e., ~two CPUs per job). This shell environment variable
@@ -23,8 +24,6 @@ SCRIPTNAME=$PBS_O_WORKDIR/run_pipe.py
 # CASA job).
 export NBATCHES=8
 
-
-alias RUN_CASA="xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c"
 
 # Before starting the jobs, first create the image files required for
 # determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If this

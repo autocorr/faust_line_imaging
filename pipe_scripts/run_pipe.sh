@@ -6,6 +6,7 @@
 # Please ensure that the script name matches the intended Python target.
 JOBNAME="pipe_log"
 SCRIPTNAME=run_pipe.py
+alias RUN_CASA="casa --nogui --nologger -c"
 
 # The number of CASA instances or jobs/batches should be about half the number
 # of CPUs requested (i.e., ~two CPUs per job). The shell environment variable
@@ -13,8 +14,6 @@ SCRIPTNAME=run_pipe.py
 # batches (or an equal number, with the minimum of one chunk per CASA job).
 export NBATCHES=8
 
-
-alias RUN_CASA="casa --nogui --nologger -c"
 
 # Before starting the jobs, first create the image files required for
 # determining the chunk starting frequencies. If this file already exists, it
