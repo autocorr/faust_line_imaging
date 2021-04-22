@@ -13,9 +13,6 @@ In this example:
       that the time it takes each job to finish will vary considerably.
     * Unlike the "parallelized single SPW" examples, this script does
       perform the post-processing for each SPW.
-    * This is currently untested! Hopefully mixing the post-processing
-      with the imaging among different instances of CASA does not cause
-      memory issues.
 """
 
 # FIXME Please change the path below such that is correct for the location of

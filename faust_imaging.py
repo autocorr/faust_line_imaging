@@ -1292,8 +1292,8 @@ class ImageConfig(object):
                     #  S12?   FDM?
                     ( True,  True):   4,  # S1/S2 FDM
                     ( True, False):  40,  # S1/S2 TDM
-                    (False,  True): 100,  # S3    FDM
-                    (False, False): 200,  # S3    TDM
+                    (False,  True):  20,  # S3    FDM
+                    (False, False):  80,  # S3    TDM
             }
             nchunks = nchunk_map[(is_s12, is_fdm)]
         assert isinstance(nchunks, int) and nchunks > 0
