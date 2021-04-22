@@ -72,9 +72,9 @@ def _run_subset(batch_ix):
     log_post('-- Batch: {0} / {1}'.format(batch_ix+1, nbatches))
     # Process each SPW or chunk. Starting at `batch_ix` step by every `_NBATCHES`.
     for config in all_configs[batch_ix::nbatches]:
-        # Pipeline processes specific to SPW may be included here. The
+        # Pipeline processes specific to the config may be included here. The
         # `.run_pipeline` method will automatically perform the post-
-        # processing.
+        # processing for narrow-band SPWs but not for the continuum chunks.
         config.run_pipeline(ext=_RUN_SUFFIX)
 
 

@@ -24,19 +24,21 @@ SCRIPTNAME=$PBS_O_WORKDIR/run_pipe.py
 export NBATCHES=8
 
 
+alias RUN_CASA="xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c"
+
 # Before starting the jobs, first create the image files required for
 # determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If this
 # file already exists, it will use the existing and move on.
 # Note that the startup and postprocessing lines can be commented out for
 # scripts that do not require them (such as the "run one SPW in serial per CASA
 # instance" sorts of batch jobs).
-casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _get_config()" >& casa_imaging_${PBS_JOBNAME}_startup.out
+RUN_CASA "execfile('$SCRIPTNAME'); _get_config()" >& casa_imaging_${PBS_JOBNAME}_startup.out
 # Start up the number of jobs asynchronously by appending "&"
 for ((i=0; i<$NBATCHES; i++))
 do
-    xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
+    RUN_CASA "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
 done
 wait
-casa --nogui --nologger -c "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
+RUN_CASA "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
 
 
