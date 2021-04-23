@@ -2188,12 +2188,23 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     # Primary beam correct the relevant moment maps
     for ext in ('mom0', 'mom0_cmask', 'max', 'max_cmask'):
         momentname = '{0}.{1}'.format(outfile, ext)
+        pbcor_momentname = '{0}.pbcor'.format(momentname)
         impbcor(
                 imagename=momentname,
                 pbimage=pbplane,
-                outfile=momentname+'.pbcor',
+                outfile=pbcor_momentname,
                 overwrite=overwrite,
         )
+        # Division by NaN appears to create a few "hot pixels" with
+        # floating point Inf when dividing by a primary beam plane
+        # that has a mask slightly smaller than the mask generated
+        # `ia.moments`. Manually replace these Inf values back to NaN.
+        ia.open(pbcor_momentname)
+        data = ia.getchunk()
+        data[np.isinf(data)] = np.nan
+        ia.putchunk(data)
+        ia.done()
+        ia.close()
     # Export the CASA images to FITS files
     export_moment_exts = ('mom0.pbcor', 'mom0_cmask.pbcor', 'max.pbcor',
             'max_cmask.pbcor', 'mom1', 'mom2')
