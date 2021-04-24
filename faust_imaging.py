@@ -2516,7 +2516,7 @@ def make_qa_plots_from_image(path, overwrite=True):
     gc.collect()
 
 
-def make_all_qa_plots(field, ext='clean', overwrite=True):
+def make_all_qa_plots(field, ext='clean', ignore_chunks=True, overwrite=True):
     """
     Generate all Quality Assurance plots for all image cubes matching
     the given field ID name and extension. Plots will be written to
@@ -2528,6 +2528,8 @@ def make_all_qa_plots(field, ext='clean', overwrite=True):
         Target field ID name
     ext : str
         Image extension name, such as 'clean', 'nomask', etc.
+    ignore_chunks : bool
+        If 'True' ignore chunk image files.
     overwrite : bool, default True
         Overwrite plot files if they exist. Setting to False will avoid the
         potentially large run-time cost of reading cubes into memory to re-make
@@ -2535,7 +2537,12 @@ def make_all_qa_plots(field, ext='clean', overwrite=True):
     """
     image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
     image_paths.sort()
+    # Typical image file path if chunked:
+    #   images/CB68/CB68_244.936GHz_CS_chunk3_joint_0.5_clean.image
+    pattern = re.compile(r'{0}_.+_.+_chunk[\d]+_'.format(field))
     for path in image_paths:
+        if ignore_chunks and pattern.search(path) is not None:
+            continue
         make_qa_plots_from_image(path, overwrite=overwrite)
         gc.collect()  # free memory, just in case...
 
