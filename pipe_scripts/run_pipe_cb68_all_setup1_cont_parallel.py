@@ -32,15 +32,27 @@ _SETUP = 1
 _SPW_SET = SPWS_BY_SETUP[_SETUP]  # defined in `faust_imaging.py`
 
 
-def _get_config():
-    """
-    Get continuum SPW configuration.
-    """
+def _get_cont_chunks():
+    # There should be only one "cont" SPW per Setup.
     label = [s for s in _SPW_SET if 'cont' in s][0]
-    # Configure global settings used for all chunks here.
     full_config = ImageConfig.from_name(_FIELD, label)
     chunked_configs = full_config.duplicate_into_chunks()
-    return full_config, chunked_configs
+    return chunked_configs
+
+
+def _get_config():
+    """
+    Merge the configurations for the narrow-band SPWs to be processed in serial
+    by chunk and the continuum SPW to be processed in parallel by chunk.
+
+    Returns
+    -------
+    [ImageConfig]
+    """
+    cont_configs = _get_cont_chunks()
+    # Create narrow-band SPW configs and merge with the continuum configs
+    narrow_configs = [ImageConfig.from_name(_FIELD, l) for l in _SPW_SET]
+    return narrow_configs + list(cont_configs)
 
 
 def _run_subset(batch_ix):
@@ -60,10 +72,7 @@ def _run_subset(batch_ix):
     batch_ix : int
         Batch index number.
     """
-    # Create narrow-band SPW configs and merge with the continuum configs
-    all_configs = [ImageConfig.from_name(_FIELD, l) for l in _SPW_SET]
-    _, chunked_configs = _get_config()
-    all_configs.extend(chunked_configs)
+    all_configs = _get_config()
     # Run batch.
     nbatches = _NBATCHES
     batch_ix = int(batch_ix)
@@ -79,7 +88,7 @@ def _run_subset(batch_ix):
 
 
 def _postprocess():
-    full_config, chunked_configs = _get_config()
+    chunked_configs = _get_cont_chunks()
     chunked_configs.postprocess(ext=_RUN_SUFFIX)
 
 
