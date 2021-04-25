@@ -33,6 +33,7 @@ Documentation
    :maxdepth: 1
    :caption: API Documentation:
 
+   developer
    faust_imaging
 
 
