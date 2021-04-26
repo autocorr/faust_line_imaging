@@ -962,8 +962,11 @@ def make_multiscale_joint_mask(imagename, rms, sigma=5.0, mask_ang_scales=(0, 1,
     rms : number
         RMS value of the unsmoothed image.
         **units**: Jy
-    sigma : number
-        Multiple of the RMS to threshold each image.
+    sigma : number, Iterable(number)
+        Multiple of the RMS to threshold each image. If passed as a number,
+        the same threshold is applied to all images (whether unsmoothed or
+        smoothed). If passed as a list-like, then the sigma value is used for
+        the image with the corresponding scale in `mask_ang_scales`.
     mask_ang_scales : Iterable(number)
         Gaussian kernel FWHM in units of arcseconds to convolve each image
         with (note: not in pixel units).
@@ -976,11 +979,15 @@ def make_multiscale_joint_mask(imagename, rms, sigma=5.0, mask_ang_scales=(0, 1,
         and the joint or unioned mask file across scales is written to:
             joint mask:     '<IMG>.summask'
     """
-    thresh = sigma * rms
+    if isinstance(sigma, Iterable):
+        assert len(sigma) == len(mask_ang_scales)
+        thresholds = [s * rms for s in sigma]
+    else:
+        thresholds = len(mask_ang_scales) * [sigma * rms]
     log_post(':: Creating threshold based mask')
     n_scales = len(mask_ang_scales)
+    # Set file names and paths
     original_image = '{0}.image'.format(imagename)
-    beamwidth = effective_beamwidth_from_image(original_image)
     pb_image = '{0}.pb'.format(imagename)
     base_names = [
             '{0}_smooth{1:.3f}'.format(imagename, s)
@@ -988,7 +995,10 @@ def make_multiscale_joint_mask(imagename, rms, sigma=5.0, mask_ang_scales=(0, 1,
     ]
     mask_files = [s+'.mask' for s in base_names]
     image_files = [s+'.image' for s in base_names]
-    for scale, smooth_image, mask_image in zip(mask_ang_scales, image_files, mask_files):
+    # Smooth and threshold the image for each angular scale
+    beamwidth = effective_beamwidth_from_image(original_image)
+    for thresh, scale, smooth_image, mask_image in zip(
+            thresholds, mask_ang_scales, image_files, mask_files):
         assert scale >= 0
         if scale == 0:
             # For a smoothing scale of zero, use the original image.
@@ -1739,7 +1749,7 @@ class ImageConfig(object):
         ----------
         ext : str
         nomask_sigma : number
-        seedmask_sigma : number
+        seedmask_sigma : number, Iterable(number)
         clean_sigma : number
         """
         self.make_dirty_cube()
@@ -1781,9 +1791,11 @@ class ImageConfig(object):
             by heuristic.
         nomask_sigma : number
             Global clean threshold for the un-masked clean run.
-        seedmask_sigma : number
+        seedmask_sigma : number, Iterable(number)
             Significance with which to threshold the un-masked clean run to
-            create the seed mask.
+            create the seed mask. If a list-like is passed, the corresponding
+            significance is used for each smoothing scale (scales are set by
+            :attr:`.mask_ang_scales`).
         clean_sigma : number
             Global clean threshold of the final clean run.
         """
