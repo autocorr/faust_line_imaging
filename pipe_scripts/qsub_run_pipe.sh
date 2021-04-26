@@ -52,6 +52,9 @@ RUN_CASA "execfile('$SCRIPTNAME'); _get_config()" >& casa_imaging_${PBS_JOBNAME}
 for ((i=0; i<$NBATCHES; i++))
 do
     RUN_CASA "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
+    # CASA log files are indexed by the date and time to the nearest second.
+    # Sleep for a couple seconds to ensure that logs do not clobber each other.
+    sleep 2
 done
 wait
 RUN_CASA "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
