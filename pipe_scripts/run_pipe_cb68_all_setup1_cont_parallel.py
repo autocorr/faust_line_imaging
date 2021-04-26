@@ -22,6 +22,8 @@ In this example:
 # below helps ensure we don't accidentally shadow variables set in
 # `faust_imaging.py`.
 execfile('../casa_scripts/faust_imaging.py')
+if os.getenv('USING_SHM') == 'True':
+    DATA_DIR = '/dev/shm/'  # defined in `faust_imaging.py`
 
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.

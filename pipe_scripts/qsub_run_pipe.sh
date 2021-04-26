@@ -42,6 +42,7 @@ export NBATCHES=8
 # totalling less than 250 GB and on nodes with 500 GB memory.
 #DATA_DIR=/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs
 #cp -r $DATA_DIR/CB68-Setup1-mosaic /dev/shm/CB68-Setup1
+#export USING_SHM=True
 
 # Before starting the jobs, first create the image files required for
 # determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If this
