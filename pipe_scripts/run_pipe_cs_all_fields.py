@@ -28,6 +28,10 @@ _NBATCHES = int(os.getenv('NBATCHES', default=4))
 _LABEL = '244.936GHz_CS'
 
 
+def _preprocess():
+    pass
+
+
 def _run_subset(batch_ix):
     """
     Run the pipeline for a given SPW for the full set of fields.
@@ -52,5 +56,9 @@ def _run_subset(batch_ix):
         # processing.
         config = ImageConfig.from_name(field, _LABEL)
         config.run_pipeline(ext=ext)
+
+
+def _postprocess():
+    pass
 
 

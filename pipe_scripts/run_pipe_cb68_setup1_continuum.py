@@ -41,6 +41,15 @@ def _get_config():
     return full_config, chunked_configs
 
 
+def _preprocess():
+    """
+    Before starting the jobs, first create the image files required for
+    determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If
+    this file already exists it will move on.
+    """
+    _get_config()
+
+
 def _run_subset(batch_ix):
     """
     Run the pipeline for a subset of chunks. Chunks are processed in stride,

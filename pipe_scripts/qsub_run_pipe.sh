@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #PBS -V
 #PBS -l mem=500gb
 #PBS -w /lustre/aoc/users/bsvoboda/faust/faust_alma/data
@@ -40,15 +40,23 @@ export NBATCHES=8
 
 # Move the visibility data into shared memory for fast IO. Appropriate for MSs
 # totalling less than 250 GB and on nodes with 500 GB memory.
-#DATA_DIR=/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs
-#cp -r $DATA_DIR/CB68-Setup1-mosaic /dev/shm/CB68-Setup1
-#export USING_SHM=True
+export USING_SHARED_MEM=true
+if [ $USING_SHARED_MEM = true ] ; then
+    DATA_DIR=/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs
+    SHM_DIR=/dev/shm
+    VIS_DATA=$DATA_DIR/CB68-Setup1-mosaic
+    SHM_DATA=$SHM_DIR/CB68-Setup1
+    if [ ! -d $SHM_DATA ] ; then
+        cp -r $VIS_DATA $SHM_DATA
+    fi
+fi
 
-# Before starting the jobs, first create the image files required for
-# determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If this
-# file already exists, it will use the existing and move on.
-RUN_CASA "execfile('$SCRIPTNAME'); _get_config()" >& casa_imaging_${PBS_JOBNAME}_startup.out
-# Start up the number of jobs asynchronously by appending "&"
+
+# Run the CASA processes for:
+#   * synchronous image preprocessing with "_preprocess()"
+#   * asynchronous subsets for chunked imaging with "_run_subset($i)"
+#   * synchronous image postprocessing with "_postprocess()"
+RUN_CASA "execfile('$SCRIPTNAME'); _preprocess()" >& casa_imaging_${PBS_JOBNAME}_preprocess.out
 for ((i=0; i<$NBATCHES; i++))
 do
     RUN_CASA "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
@@ -58,5 +66,13 @@ do
 done
 wait
 RUN_CASA "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
+
+
+# Clean up the temporary files stored in memory. This may not be strictly
+# necessary but could cause problems if the files persist.
+if [ $USING_SHARED_MEM = true ] ; then
+    rm -rf $SHM_DATA
+    unlink $SHM_DIR/images
+fi
 
 

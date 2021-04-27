@@ -28,6 +28,10 @@ execfile('../casa_scripts/faust_imaging.py')
 _NBATCHES = int(os.getenv('NBATCHES', default=4))
 
 
+def _preprocess():
+    pass
+
+
 def _run_subset(batch_ix):
     """
     Run the pipeline for a subset of SPWs. SPWs are processed in stride
@@ -57,5 +61,9 @@ def _run_subset(batch_ix):
         # processing.
         config = ImageConfig.from_name(field, label)
         config.run_pipeline(ext=ext)
+
+
+def _postprocess():
+    pass
 
 

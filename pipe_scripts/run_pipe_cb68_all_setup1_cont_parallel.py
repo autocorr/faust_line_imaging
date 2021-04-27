@@ -22,8 +22,11 @@ In this example:
 # below helps ensure we don't accidentally shadow variables set in
 # `faust_imaging.py`.
 execfile('../casa_scripts/faust_imaging.py')
-if os.getenv('USING_SHM') == 'True':
+if os.getenv('USING_SHARED_MEM') == 'true':
     DATA_DIR = '/dev/shm/'  # defined in `faust_imaging.py`
+    os.chdir('/dev/shm')
+    if not os.path.exists('images'):
+        os.symlink(IMAG_DIR, 'images')
 
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.
@@ -55,6 +58,15 @@ def _get_config():
     # Create narrow-band SPW configs and merge with the continuum configs
     narrow_configs = [ImageConfig.from_name(_FIELD, l) for l in _SPW_SET]
     return narrow_configs + list(cont_configs)
+
+
+def _preprocess():
+    """
+    Before starting the jobs, first create the image files required for
+    determining the chunk starting frequencies (i.e., "_tinyimg.sumwt"). If
+    this file already exists it will move on.
+    """
+    _get_config()
 
 
 def _run_subset(batch_ix):

@@ -524,11 +524,19 @@ Recipes are included for:
       default is 4) and process the chunks in parallel. This is useful for
       quickly processing one window that is well-characterized by a single RMS
       (i.e., not those near telluric lines).
-    * ``run_pipe_cb68_all_setup1.py`` Process all of the SPWs in parallel for
-      Setup 1 (including the continuum SPW) using the default settings. For 13
-      SPWs and 8 CASA instances, each instance will process 1-2 SPWs. This
+    * ``run_pipe_cb68_all_setup1_cont_parallel.py`` Process all of the
+      narrow-band SPWs serially by chunk but distribute the chunks of
+      the continuum SPW among the CASA instances for parallel processing.  This
+      more efficiently balances the work-load among the CASA instances because
+      the continuum SPW is substantially more computationally intensive to
+      image.  For 13 narrow-band SPWs and 8 CASA instances, each instance will
+      process 1-2 narrow-band SPWs and ~5 chunks of the continuum SPW. This
       script is useful for processing a complete Setup in a straightforward
       way.
+
+For correct usage with the given shell scripts, each Python script must
+implement the top-level functions ``_preprocess()``, ``_run_subset(<INDEX>)``,
+and ``_postprocess()``.
 
 Personal machine
 ~~~~~~~~~~~~~~~~
