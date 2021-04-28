@@ -2459,7 +2459,7 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     tick_pos = cset.calc_tick_loc(ang_tick=5)
     figsize = (ncols * subplot_size, nrows * subplot_size)
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex=True,
-            sharey=True, figsize=figsize)
+            sharey=True, figsize=figsize, dpi=300)
     for ax, (planes, chan_ix) in zip(axes.flat, cset.iter_planes()):
         image, residual, mask, pbeam = planes
         data = image if kind == 'image' else residual

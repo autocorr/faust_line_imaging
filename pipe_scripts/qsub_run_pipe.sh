@@ -28,7 +28,9 @@ cd $PBS_O_WORKDIR  # directory where `qsub` was executed.
 CASAPATH=/home/casa/packages/RHEL7/release/current
 PATH=$CASAPATH/bin:$PATH
 SCRIPTNAME=$PBS_O_WORKDIR/run_pipe.py
-alias RUN_CASA="xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c"
+function run_casa {
+    xvfb-run -d $CASAPATH/bin/casa --nogui --nologger -c "$1"
+}
 
 # The number of CASA instances or jobs/batches should be about half the number
 # of CPUs requested (i.e., ~two CPUs per job). This shell environment variable
@@ -42,8 +44,8 @@ export NBATCHES=8
 # totalling less than 250 GB and on nodes with 500 GB memory.
 export USING_SHARED_MEM=true
 if [ $USING_SHARED_MEM = true ] ; then
+    export SHM_DIR=/dev/shm/faust_pipeline
     DATA_DIR=/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs
-    SHM_DIR=/dev/shm
     VIS_DATA=$DATA_DIR/CB68-Setup1-mosaic
     SHM_DATA=$SHM_DIR/CB68-Setup1
     if [ ! -d $SHM_DATA ] ; then
@@ -56,16 +58,16 @@ fi
 #   * synchronous image preprocessing with "_preprocess()"
 #   * asynchronous subsets for chunked imaging with "_run_subset($i)"
 #   * synchronous image postprocessing with "_postprocess()"
-RUN_CASA "execfile('$SCRIPTNAME'); _preprocess()" >& casa_imaging_${PBS_JOBNAME}_preprocess.out
+run_casa "execfile('$SCRIPTNAME'); _preprocess()" >& casa_imaging_${PBS_JOBNAME}_preprocess.out
 for ((i=0; i<$NBATCHES; i++))
 do
-    RUN_CASA "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
+    run_casa "execfile('$SCRIPTNAME'); _run_subset($i)" >& casa_imaging_${PBS_JOBNAME}_${i}.out &
     # CASA log files are indexed by the date and time to the nearest second.
     # Sleep for a couple seconds to ensure that logs do not clobber each other.
     sleep 2
 done
 wait
-RUN_CASA "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
+run_casa "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
 
 
 # Clean up the temporary files stored in memory. This may not be strictly
