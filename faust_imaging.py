@@ -192,6 +192,7 @@ class DataSet(object):
             values include: ('joint', '12m', '7m'). Note that only 12m data is
             availabe for Setup 3.
         """
+        self._imsize_warning_posted = False
         assert field in ALL_FIELD_NAMES
         assert setup in (1, 2, 3)
         if setup == 3 and kind != '12m':
@@ -264,6 +265,19 @@ class DataSet(object):
 
     @property
     def imsize(self):
+        """
+        Get the image size in pixels dynamically according to the lowest
+        frequency SPW of the Setup and antenna diameter (i.e., 12m or 7m).
+        The field size size is calculated as 10% larger than the full-width
+        at the 10%-maximum point of the primary beam (approximated as
+        $1.13 \lambda / D$).
+
+        Note that to work around a memory leak in `ia.getregion` that occurs
+        for square image sizes greater than 3500 pixels, we reduce the value to
+        the next largest "optimum size" reported by `cleanhelper`: 3456. This
+        reduction only marginally affects (~2%) the Setup 3 data that are very
+        close to ~3500.
+        """
         if self.kind in ('joint', '12m'):
             ant_diam = '12m'
         elif self.kind == '7m':
@@ -276,6 +290,17 @@ class DataSet(object):
         angle = qa.mul(angle, 2.00)  # 1.1 * [full-width at 10% maximum]
         pix_width = qa.convert(qa.div(angle, self.cell), '')['value']
         eff_width = cleanhelper.getOptimumSize(int(pix_width))
+        # Guard against memory leak in `ia.region` (used further on in the
+        # pipeline) by limiting the image size. See docstring above.
+        max_safe_size = 3456  # pix
+        if eff_width > max_safe_size:
+            eff_width = max_safe_size
+            # This property is called many times in the pipeline, so only post
+            # this warning once to the logger.
+            if not self._imsize_warning_posted:
+                log_post('-- Image size {0} exceeds the maximum safe size.'.format(eff_width), priority='WARN')
+                log_post('-- Setting image size to {0}.'.format(max_safe_size), priority='WARN')
+                self._imsize_warning_posted = True
         return [eff_width, eff_width]
 
     def check_if_product_dirs_exist(self):
