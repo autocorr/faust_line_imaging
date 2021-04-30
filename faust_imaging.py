@@ -879,7 +879,7 @@ def copy_pb_mask(imagename, pbimage):
             output=imagename+':mask0', overwrite=True)
 
 
-def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
+def calc_rms_from_image(imagename, chan_expr=None):
     """
     Calculate RMS values from the scaled MAD of all channels (unless given a
     range) for the given full imagename.
@@ -888,27 +888,21 @@ def calc_rms_from_image(imagename, chan_start=None, chan_end=None):
     ----------
     imagename : str
         CASA Image name, e.g., "244.936GHz_CS_joint_0.5_dirty.image"
-    chan_start : int, None
-        Start channel. If None, use full channel range.
-    chan_end : int, None
-        End channel. If None, use full channel range.
+    chan_expr : str, None
+        Channel selection expression passed to `imstat` parameter `chans`.
+        If None, the full channel range is used.
 
     Returns
     -------
-    rms : number
+    float
+        RMS
     """
-    if chan_start is None or chan_end is None:
-        chans = None
-    else:
-        assert chan_start < chan_end
-        chans = '{0}~{1}'.format(chan_start, chan_end)
-    # check if directory exists
     if not os.path.exists(imagename):
         msg = '-- File or directory not found: "{0}"'.format(imagename)
         log_post(msg, priority='WARN')
         raise IOError(msg)
     # run imstat over the cube and extract the calculated RMS
-    stats = imstat(imagename=imagename, axes=[0, 1], chans=chans)
+    stats = imstat(imagename=imagename, axes=[0, 1], chans=chan_expr)
     mad_arr = stats['medabsdevmed']
     rms = MAD_TO_RMS * np.nanmedian(mad_arr)
     log_post('-- RMS: {0}'.format(rms))
@@ -1223,7 +1217,6 @@ class ImageConfig(object):
                 log_post('-- Has the `.make_dirty_cube` been run?')
                 raise IOError(msg)
             rms = calc_rms_from_image(imagename)
-            log_post('-- RMS {0} Jy'.format(rms))
             return rms
         else:
             return self._rms
@@ -2294,8 +2287,6 @@ def savefig(filen, dpi=300, plot_exts=('png', 'pdf'), close=True):
 
 
 class CubeSet(object):
-    max_safe_size = 3500
-
     def __init__(self, path, sigma=6):
         """
         Parameters
@@ -2306,12 +2297,6 @@ class CubeSet(object):
         sigma : number
             Significance threshold used to select planes/channels to
             retrieve.
-
-        Notes
-        -----
-        Note that a warning is issued (once) for image sizes greater than
-        3456 pixels due to a memory leak that may occur in `ia.getregion`
-        used to produce the QA plots.
         """
         self.path = path
         self.sigma = sigma
@@ -2329,11 +2314,6 @@ class CubeSet(object):
         self.shape = shape
         self.pix_width = shape[0]
         self.nchan = shape[3]
-        if self.pix_width > self.max_safe_size:
-            log_post(
-                    '-- Image size {0} > {1}; may cause memory leak.'
-                    .format(self.pix_width, self.max_safe_size), priority='WARN',
-            )
         # Identify channels with significant emisssion.
         good_chan = self.get_good_channels()
         self.good_chan = good_chan
@@ -2364,43 +2344,19 @@ class CubeSet(object):
         -------
         ndarray
             2D image plane of the selected channel.
-
-        Notes
-        -----
-        The arrays returned by ``ia.getregion`` do not appear to have
-        their references counted correctly and are not properly removed by the
-        Python Garbage Collector.  The array returned by this function must be
-        "del" unreferenced manually in order for them to be properly removed.
-
         """
-        # NOTE The `par.region` "range" syntax is inclusive for the upper and
-        # lower bounds. Thus if both lower and upper bounds are equal, a single
-        # channel slice will be returned (e.g., range=[5chan,5chan] returns a
-        # slice of just channel 5).  However, for an unknown reason, this
-        # returns the whole cube for range=[0chan,0chan]. For this special
-        # case, use range=[0,1] then take a slice for the first value.
-        if ix == 0:
-            ix_lo, ix_hi = 0, 1
-        else:
-            ix_lo, ix_hi = ix, ix
-        xpix, ypix = self.shape[0], self.shape[1]
-        # Note that the range is inclusive in the region format, and thus this
-        # selects one channel. The channel index number is one indexed.
-        region = (
-                'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(xpix, ypix) +
-                'range=[{0}chan,{1}chan]'.format(ix_lo, ix_hi)
-        )
-        ia.open(filen)
-        # `dropdeg` removes degenerate axes, in this case frequency and Stokes.
-        # The transpose converts the native Fortran ordering to C ordering.
-        plane = ia.getregion(region, dropdeg=True)
-        plane = plane.astype('float32').transpose()
-        ia.done()
-        ia.close()
-        if ix == 0:
-            return plane[...,0]
-        else:
-            return plane
+        try:
+            ia.open(filen)
+            single_plane = ia.collapse(function='sum', axes=[3], chans=str(ix))
+            data = single_plane.getchunk(dropdeg=True)
+            single_plane.done()
+        except RuntimeError:
+            raise
+        finally:
+            ia.done()
+            ia.close()
+        # Transpose converts the native Fortran ordering to C ordering.
+        return data.astype('float32').transpose()
 
     def get_image_planes(self, ix):
         stem = self.stem
@@ -2423,19 +2379,24 @@ class CubeSet(object):
     def get_good_channels(self):
         stem = self.stem
         threshold = self.sigma * self.rms
-        good_chans = []
         log_post('-- Identifying channels with significant emission')
-        for ix in range(self.nchan):
-            im = self.get_plane_from_image(stem+'.image', ix)
-            pb = self.get_plane_from_image(stem+'.pb', ix)
-            # Use a large sentinel value to avoid NaN warning from numpy in the
-            # ">" operation.
-            im[pb < PBLIMIT] = -1e16
-            if np.any(im > threshold):
-                good_chans.append(ix)
-            del im, pb
-        log_post('-- channels identified: {0}'.format(len(good_chans)))
-        return np.array(good_chans)
+        imagename = '{0}.image'.format(stem)
+        try:
+            ia.open(imagename)
+            masked_image = ia.imagecalc(
+                    pixels='iif("{0}">{1},1,0)'.format(imagename, threshold),
+            )
+            summed_image = masked_image.collapse(function='sum', axes=[0,1,2])
+            data = summed_image.getchunk().squeeze()
+            masked_image.done()
+            summed_image.done()
+        except RuntimeError:
+            raise
+        finally:
+            ia.done()
+            ia.close()
+        good_chan = np.argwhere(data > 0).flatten()
+        return good_chan
 
     def calc_tick_loc(self, ang_tick=5):
         """
@@ -2531,7 +2492,7 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     savefig(outfilen_ext)
 
 
-def make_qa_plots_from_image(path, overwrite=True):
+def make_qa_plots_from_image(path, plot_sigma=None, overwrite=True):
     """
     Create a single set of Quality Assurance plots. Plots will
     be written to the directory specified in ``PLOT_DIR``.
@@ -2540,6 +2501,9 @@ def make_qa_plots_from_image(path, overwrite=True):
     ----------
     path : str
         Full path to imagename, including the ending ".image".
+    plot_sigma : number, None
+        Significance threshold to select a channel for plotting. If None, use
+        the default set by `CubeSet`.
     overwrite : bool
         Overwrite plot files if they exist.
     """
@@ -2552,7 +2516,10 @@ def make_qa_plots_from_image(path, overwrite=True):
         log_post('-- File exists, passing: {0}'.format(pdf_path))
         return
     # Read in cube data and make plots
-    cset = CubeSet(path)
+    if plot_sigma is None:
+        cset = CubeSet(path)
+    else:
+        cset = CubeSet(path, sigma=plot_sigma)
     outfilen = '{0}_qa_plot'.format(cset.basename)
     make_qa_plot(cset, kind='image', outfilen=outfilen)
     make_qa_plot(cset, kind='residual', outfilen=outfilen)
