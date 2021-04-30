@@ -192,7 +192,6 @@ class DataSet(object):
             values include: ('joint', '12m', '7m'). Note that only 12m data is
             availabe for Setup 3.
         """
-        self._imsize_warning_posted = False
         assert field in ALL_FIELD_NAMES
         assert setup in (1, 2, 3)
         if setup == 3 and kind != '12m':
@@ -271,12 +270,6 @@ class DataSet(object):
         The field size size is calculated as 10% larger than the full-width
         at the 10%-maximum point of the primary beam (approximated as
         $1.13 \lambda / D$).
-
-        Note that to work around a memory leak in `ia.getregion` that occurs
-        for square image sizes greater than 3500 pixels, we reduce the value to
-        the next largest "optimum size" reported by `cleanhelper`: 3456. This
-        reduction only marginally affects (~2%) the Setup 3 data that are very
-        close to ~3500.
         """
         if self.kind in ('joint', '12m'):
             ant_diam = '12m'
@@ -290,17 +283,6 @@ class DataSet(object):
         angle = qa.mul(angle, 2.00)  # 1.1 * [full-width at 10% maximum]
         pix_width = qa.convert(qa.div(angle, self.cell), '')['value']
         eff_width = cleanhelper.getOptimumSize(int(pix_width))
-        # Guard against memory leak in `ia.region` (used further on in the
-        # pipeline) by limiting the image size. See docstring above.
-        max_safe_size = 3456  # pix
-        if eff_width > max_safe_size:
-            eff_width = max_safe_size
-            # This property is called many times in the pipeline, so only post
-            # this warning once to the logger.
-            if not self._imsize_warning_posted:
-                log_post('-- Image size {0} exceeds the maximum safe size.'.format(eff_width), priority='WARN')
-                log_post('-- Setting image size to {0}.'.format(max_safe_size), priority='WARN')
-                self._imsize_warning_posted = True
         return [eff_width, eff_width]
 
     def check_if_product_dirs_exist(self):
@@ -2312,7 +2294,25 @@ def savefig(filen, dpi=300, plot_exts=('png', 'pdf'), close=True):
 
 
 class CubeSet(object):
+    max_safe_size = 3500
+
     def __init__(self, path, sigma=6):
+        """
+        Parameters
+        ----------
+        path : str
+            Full image path, including extension.
+
+        sigma : number
+            Significance threshold used to select planes/channels to
+            retrieve.
+
+        Notes
+        -----
+        Note that a warning is issued (once) for image sizes greater than
+        3456 pixels due to a memory leak that may occur in `ia.getregion`
+        used to produce the QA plots.
+        """
         self.path = path
         self.sigma = sigma
         # Setup paths and calculate noise
@@ -2329,6 +2329,11 @@ class CubeSet(object):
         self.shape = shape
         self.pix_width = shape[0]
         self.nchan = shape[3]
+        if self.pix_width > self.max_safe_size:
+            log_post(
+                    '-- Image size {0} > {1}; may cause memory leak.'
+                    .format(self.pix_width, self.max_safe_size), priority='WARN',
+            )
         # Identify channels with significant emisssion.
         good_chan = self.get_good_channels()
         self.good_chan = good_chan
@@ -2348,11 +2353,6 @@ class CubeSet(object):
 
     def get_plane_from_image(self, filen, ix):
         """
-        NOTE The arrays returned by ``ia.getregion`` do not appear to have
-        their references counted correctly and are not properly removed by the
-        Python Garbage Collector.  The array returned by this function must be
-        "del" unreferenced manually in order for them to be properly removed.
-
         Parameters
         ----------
         filen : str
@@ -2362,8 +2362,16 @@ class CubeSet(object):
 
         Returns
         -------
-        plane : ndarray
+        ndarray
             2D image plane of the selected channel.
+
+        Notes
+        -----
+        The arrays returned by ``ia.getregion`` do not appear to have
+        their references counted correctly and are not properly removed by the
+        Python Garbage Collector.  The array returned by this function must be
+        "del" unreferenced manually in order for them to be properly removed.
+
         """
         # NOTE The `par.region` "range" syntax is inclusive for the upper and
         # lower bounds. Thus if both lower and upper bounds are equal, a single
