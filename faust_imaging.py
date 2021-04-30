@@ -800,11 +800,14 @@ def calc_chunk_freqs(imagebase, nchunks=1):
     cdelt = abs(cdelt)
     # Calculate the number of channels per chunk. Distribute the channels the
     # channel numbers that don't evenly divide uniformly among the remaining.
-    chan_per_chunk = np.zeros(nchunks, dtype=int)
-    chan_per_chunk[:] = nchan_total // nchunks
-    remainder = nchan_total % nchunks
-    chan_per_chunk[-remainder:] += 1
-    assert chan_per_chunk.sum() == nchan_total
+    if nchan_total == nchunks:
+        chan_per_chunk = np.ones(nchunks, dtype=int)
+    else:
+        chan_per_chunk = np.zeros(nchunks, dtype=int)
+        chan_per_chunk[:] = nchan_total // nchunks
+        remainder = nchan_total % nchunks
+        chan_per_chunk[-remainder:] += 1
+        assert chan_per_chunk.sum() == nchan_total
     # Calculate the starting frequencies by iteratively adding the chunk
     # bandwidth to the last starting frequency.
     chunks = []
@@ -929,6 +932,8 @@ def create_mask_from_threshold(infile, outfile, thresh, overwrite=True):
 def effective_beamwidth_from_image(imagename):
     """
     Median of the geometric-mean beamwidths in an image with perplane beams.
+    If the image has a single plane or single restoring beam, then the
+    geometric mean of the major & minor axes is returned.
 
     Parameters
     ----------
@@ -939,13 +944,18 @@ def effective_beamwidth_from_image(imagename):
         log_post(msg, priority='WARN')
         raise IOError(msg)
     header = imhead(imagename)
-    beam_areas = np.array([
-            v['*0']['major']['value'] * v['*0']['minor']['value']
-            for v in header['perplanebeams']['beams'].values()
-    ])
-    med_area = np.median(beam_areas)
-    eff_size = np.sqrt(med_area)
-    return eff_size
+    if 'perplanebeams' in header:
+        geom_mean_widths = np.sqrt([
+                v['*0']['major']['value'] * v['*0']['minor']['value']
+                for v in header['perplanebeams']['beams'].values()
+        ])
+        return np.median(geom_mean_widths)
+    elif 'restoringbeam' in header:
+        beam = header['restoringbeam']
+        geom_mean_width = np.sqrt(beam['major']['value'] * beam['minor']['value'])
+        return geom_mean_width
+    else:
+        raise ValueError('Invalid beam information in: {0}'.format(imagename))
 
 
 def make_multiscale_joint_mask(imagename, rms, sigma=5.0, mask_ang_scales=(0, 1, 3)):
@@ -1851,6 +1861,14 @@ class ChunkedConfigSet(object):
         (str, str, str)
             Beam parameters formatted as strings with unit labels: major axis
             (arcsec), minor axis (arcsec), position angle (deg).
+
+        Notes
+        -----
+        A fudge factor of 0.3% is added to the beam size to account for
+        discrepencies in how the common beam is calculated by CASA over the
+        full cube compared to the largest-area common beam among the chunks.
+        For typical ~0.35as HPBWs in the FAUST program, this multiplicatie
+        factor corresponds to ~1 mas.
         """
         # Iteratively identify the largest beam among the common beams of all
         # the chunked images.
@@ -1869,6 +1887,10 @@ class ChunkedConfigSet(object):
                 max_area = area
                 common = beam
         assert common is not None
+        # Apply fudge factor
+        epsilon = 1.003
+        common['major']['value'] *= epsilon
+        common['minor']['value'] *= epsilon
         return common
 
     def concat_cubes(self, ext='clean', im_exts=None):
