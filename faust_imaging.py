@@ -113,8 +113,6 @@ AUTOM_KWARGS = {
         'lownoisethreshold': 1.5,
         'minbeamfrac': 0.001,
         'negativethreshold': 7.0,
-        'smoothfactor': 0.5,
-        'cutthreshold': 0.05,
         'growiterations': 1000,
         'dogrowprune': False,
         'fastnoise': False,
@@ -222,7 +220,7 @@ class DataSet(object):
 
     @property
     def ms_fmt(self):
-        return DATA_DIR + self._ms_fmt
+        return os.path.join(DATA_DIR, self._ms_fmt)
 
     @property
     def cell_12m(self):
@@ -783,7 +781,7 @@ def calc_chunk_freqs(imagebase, nchunks=1):
     nchunks = int(nchunks)
     assert nchunks >= 1
     freq_start, nchan_total = calc_common_coverage_range(imagebase)
-    assert nchunks < nchan_total
+    assert nchunks <= nchan_total
     # Convert start frequency unit string into a float.
     spec_unit = 'Hz'
     freq_start = qa.convert(freq_start, spec_unit)['value']
