@@ -39,7 +39,7 @@ export NBATCHES=8
 
 # Move the visibility data into shared memory for fast IO. Appropriate for MSs
 # totalling less than 250 GB and on nodes with 500 GB memory.
-export USING_SHARED_MEM=true
+export USING_SHARED_MEM=false
 if [ $USING_SHARED_MEM = true ] ; then
     export SHM_DIR=/dev/shm/faust_pipeline
     DATA_DIR=/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs
