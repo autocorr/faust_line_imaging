@@ -17,9 +17,6 @@
 #  * NBATCHES is equal to or fewer than the number of chunks to be processed.
 #  * The correct field name is used in the path to the MS files if copying the
 #    data into RAM using /dev/shm.
-#  * The lines containing "_get_config()" and "_postprocess()" are removed
-#    or commented out if the Python script does not require them (such as
-#    the "run one SPW in serial per CASA instance" sorts of batch jobs).
 #  * That the number of batches is commensurate with the requested memory
 #    and core count.
 
