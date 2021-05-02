@@ -498,6 +498,47 @@ for each chunk individually using an interpolation function.
        config.run_pipeline()
 
 
+.. _Restarting One Chunk:
+
+Restarting and manually cleaning a single chunk
+-----------------------------------------------
+Absorption and strong spatial filtering occassionally yield unsatisfactory
+results using the default heuristics of the pipeline. To manually restart
+and clean a single chunk without, one can retrieve the chunk by channel
+number and then apply similar procedures for cleaning it as described in the
+`Restarting`_ section. The post-processing steps can be run without
+repeating the steps for all of the others using the ``use_existing_except``
+keyword parameter in :meth:`faust_imaging.ChunkedConfigSet.postprocess`.
+The final concatenated products will then be removed and replaced by new
+ones containing the modified chunk(s).
+
+.. code:: python
+
+   # Create the configuration instances in the same way as they were set in the
+   # original run. For CB68 in CS (5-4), the default is 4 chunks:
+   full_config = ImageConfig.from_name('CB68', '244.936GHz_CS')
+   chunked_configs = full_config.duplicate_into_chunks()
+
+   # After reviewing the full, concatenated cubes of the pipeline run, it
+   # is found that channel index number 255 (i.e., indexed from 0, which is
+   # also the convention of the `casaviewer`) is insufficiently masked. For
+   # a cube with 477 channels in 4 chunks, this corresponds to chunk index 2.
+   # The chunk indices are also reflected in the image file names ("_chunk2_").
+   # Here we retrieve the configuration containing the desired channel index:
+   config_with_issues = chunked_configs.get_chunk_from_channel(255)
+   chunk_index = config_with_issues.chunk.index  # -> 2
+
+   # Clean the line interactively, restarting using the model and mask on disk.
+   config_with_issues.clean_line(ext='clean', interactive=True, restart=True,
+           sigma=3)
+
+   # Remake the products for chunk2, but use the existing products from the
+   # other chunks. Concatenate all results together into new final cubes.
+   chunked_configs.postprocess(ext='clean', use_existing_except=[chunk_index])
+   # Alternatively, just re-make everything.
+   #chunked_configs.postprocess(ext='clean')
+
+
 .. _ParallelCasa:
 
 Parallelized computation with multiple CASA processes
@@ -536,7 +577,9 @@ Recipes are included for:
 
 For correct usage with the given shell scripts, each Python script must
 implement the top-level functions ``_preprocess()``, ``_run_subset(<INDEX>)``,
-and ``_postprocess()``.
+and ``_postprocess()``. If they are not required, the ``_preprocess`` and
+``_postprocess`` functions can simply execute a ``pass`` instruction for a
+no-op.
 
 Personal machine
 ~~~~~~~~~~~~~~~~
@@ -567,33 +610,10 @@ Finally, execute the shell script (``./run_pipe.sh``, say). Files for both the
 CASA log and the STDOUT terminal output will be created for each CASA process
 (one can monitor progress in real time with ``tail -f file.log``).
 
-Once the jobs are finished running, the chunk files need to be post-processed.
-Currently this post-processing can only operate using a single thread, so it
-is not necessary to run it from the above shell script. From a CASA session
-run:
-
-.. code:: python
-
-   execfile('run_pipe.py')
-   _postprocess()
-
-If issues in the images are discovered at certain frequencies/channels, individual
-chunks may be re-run without re-running all of the others.
-
-.. code:: python
-
-   execfile('run_pipe.py')
-   full_config, chunked_configs = _get_config()
-   # If for example, "chunk42" out of 99 has issues, select it, and apply new
-   # pipeline procedures.
-   config_with_issues = chunked_configs[42]
-   config_with_issues.clean_line(ext='clean', interactive=True, restart=True,
-           sigma=3)
-   # Remake the products for chunk42, but use the existing products from the
-   # other chunks. Concatenate all results together into new final cubes.
-   chunked_configs.postprocess(ext='clean', use_existing_except=[42])
-   # Alternatively, just re-make everything.
-   #chunked_configs.postprocess(ext='clean')
+If issues are discovered at certain frequencies/channels, such as divergences
+or insufficient masking, individual chunks may be restarted without re-running
+all of the others following the description in the `Restarting One Chunk`_
+section.
 
 Torque job submission
 ~~~~~~~~~~~~~~~~~~~~~
