@@ -504,13 +504,16 @@ Restarting and manually cleaning a single chunk
 -----------------------------------------------
 Absorption and strong spatial filtering occassionally yield unsatisfactory
 results using the default heuristics of the pipeline. To manually restart
-and clean a single chunk without, one can retrieve the chunk by channel
-number and then apply similar procedures for cleaning it as described in the
-`Restarting`_ section. The post-processing steps can be run without
-repeating the steps for all of the others using the ``use_existing_except``
-keyword parameter in :meth:`faust_imaging.ChunkedConfigSet.postprocess`.
-The final concatenated products will then be removed and replaced by new
-ones containing the modified chunk(s).
+and clean problematic chunks without re-running the full pipeline one can
+deconvolve and post-process chunks individually. For example, one can retrieve
+a specific image chunk by its channel number and then restart the deconvolution
+using interactive masking (as described in the `Restarting`_ section).
+The post-processing can be run individually for a chunk that is re-imaged
+without repeating the post-processing steps for all of the other chunks using
+the ``use_existing_except`` keyword parameter in
+:meth:`faust_imaging.ChunkedConfigSet.postprocess`.  The original concatenated
+products will then be replaced by new the ones containing the modified
+chunk(s).
 
 .. code:: python
 
