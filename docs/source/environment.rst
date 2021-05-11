@@ -1,13 +1,46 @@
-Filesystem and CASA environment
+Pipeline installation and setup
 ===============================
-The pipeline script ``faust_imaging.py`` is to be run using CASA v5 (e.g.,
-v5.6), which will be the last version of CASA to use Python 2 and the included
-CASA Python distribution. The pipeline may support CASA v6 and Python v3 in the
-future, but does not currently at this time.
+The pipeline comprises a single Python file to be run under CASA v5. The
+pipeline script does not require installation per se, but must be executed when
+starting a new CASA process or session. The instructions below detail how to
+download the script, setup the correct pathes and directories, and execute the
+script.
 
+
+CASA compatibility
+-----------------
+The pipeline is to be run using CASA *v5* (e.g., v5.6, v5.7), which will be the
+last version of CASA to use Python 2 and the included CASA Python distribution.
+CASA v6 and Python v3 are not supported at this time, but may be in the future.
+
+
+Downloading the pipeline
+------------------------
+The pipeline comprises a single Python source file, ``faust_imaging.py``, that
+may be downloaded either by downloading the repository from `GitHub
+<https://github.com/autocorr/faust_line_imaging>`_ as a Zip archive or by
+cloning the repository using Git:
+
+.. code-block:: bash
+
+   git clone https://github.com/autocorr/faust_line_imaging
+   # this will create the directory "faust_line_imaging" in the current
+   # working directory.
+
+Updates to the script from the main repository can be automatically merged by
+running ``git pull`` from the repository. To modify the source and have those
+changes reflected in the main repositry, please `fork
+<https://docs.github.com/en/desktop/contributing-and-collaborating-using-github-desktop/cloning-and-forking-repositories-from-github-desktop#forking-a-repository>`_
+the above repository on
+GitHub and file a `pull request
+<https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request-from-a-fork>`_.
+
+
+Paths and directory setup
+-------------------------
 The pipeline script currently requires an explicit directory structure to read
-the measurement sets and correctly write out the images. Note the following
-global paths to be set by the user in particular:
+the measurement sets and write out the images. The following global paths
+are to be set by the user:
 
 .. code-block:: python
 
@@ -54,5 +87,31 @@ found in the ``ALL_TARGETS`` dictionary, I retrieved these values from the
 proposal, so they may be inconsistent for some targets. The paths above may
 modified directly by editing the format string attribute ``DataSet.ms_fmt``.
 
-Now that the environment is setup, please see the :doc:`quick-start guide
-<quickstart>` or click the "Next" button for running the pipeline.
+
+Executing the script
+--------------------
+Ensure that the script can be properly executed from within CASA by starting
+CASA from the directory set in ``PROD_DIR``. The pipeline script can then be
+executed and all functions/symbols brought into scope using the ``execfile``
+command:
+
+.. code-block:: python
+
+   # using a relative path
+   execfile('../<Path>/faust_line_imaging/faust_imaging.py')
+   # or alternatively using an absolute path
+   execfile('/<PATH>/<TO>/faust_line_imaging/faust_imaging.py')
+
+This ``execfile`` command needs to be run whenever starting CASA or when
+the pipeline script source code is modified.  Note that the ``execfile``
+command can also be performed within "recipe" scripts that are themselves run
+with ``execfile`` in CASA.
+
+
+Next steps
+----------
+Congratulations! Now that the environment is setup, please now refer to the
+:doc:`quick-start guide <quickstart>` or click the "Next" button for
+instructions on running the pipeline.
+
+

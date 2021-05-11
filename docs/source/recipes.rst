@@ -51,6 +51,8 @@ robust factor of ``0.5``. The full calling convention is:
    )
 
 
+.. _Pipeline Tasks:
+
 Pipeline task description
 -------------------------
 The :meth:`faust_imaging.ImageConfig.run_pipeline` method discussed above is
@@ -177,6 +179,8 @@ For developing custom plotting routines, the :class:`faust_imaging.CubeSet`
 class may be of use.
 
 
+.. _Imaging cut-out velocity windows:
+
 Imaging cut-out velocity windows
 --------------------------------
 The default pipeline setting of ``fullcube=True`` will image the entire
@@ -286,30 +290,7 @@ applying a few tweaks, and then cleaning more deeply.
    config.postprocess(ext='clean')
 
 
-Parallel image processing
--------------------------
-The computational efficiency for imaging a single SPW can be improved by
-a factor of approximately two using CASA run with MPI (i.e., ``mpicasa``).
-The pipeline script will automatically recognize from the environment whether
-it is being run with ``mpicasa`` and use ``parallel=True`` accordingly in
-``tclean``. At the current time the preferred pipeline masking method of
-``mask_method='seed+multithresh'`` is not currently supported in parallel.
-Imaging may be run in parallel when using ``mask_method='auto-multithresh'``,
-although the former method is preferred.
-
-The majority of the computational run-time cost of the imaging derives from
-the conservative ``cyclefactor`` and ``gain`` used with ``tclean``. These
-parameters are selected to avoid divergences that are common when cleaning
-extended emission with large scales using multiscale clean and clean
-boxing/masking. If the emission is relatively compact in the field and
-SPW of interest, these parameters can be relaxed to increase performance:
-
-.. code-block:: python
-
-   config.gain = 0.1         # default 0.05
-   config.cyclefactor = 1.0  # default 2.0
-   config.run_pipeline()
-
+.. _Creating moment maps:
 
 Creating moment maps
 --------------------
@@ -323,6 +304,7 @@ for a single SPW of a target.
    # Create moment maps for all SPWs. The `vwin` parameter sets the velocity
    # window half-width in km/s to calculate the moment over.
    make_all_moment_maps('CB68', ext='clean', vwin=5)
+
    # Generate a single set of moment maps
    imagename = 'images/CB68/CB68_244.936GHz_CS_joint_0.5_clean.image'
    make_moments_from_image(imagename, vwin=5)
@@ -332,7 +314,7 @@ mask and (b) do not meet a significance cut on a Hanning smoothed cube. The
 moments are computed using the unsmoothed data.
 
 
-.. _SetRms:
+.. _Set Rms:
 
 Manually setting the RMS
 ------------------------
@@ -432,8 +414,10 @@ same configuration options are applied in order to reproduce the equivalent
    # Post-process each chunk separately and then concatenate the results.
    chunked_configs.postprocess(ext='clean')
 
-For specific example recipes, please refer to the `ParallelCasa`_ section.
+For specific example recipes, please refer to the `Parallel CASA`_ section.
 
+
+.. _Small Chunk Sizes:
 
 Imaging Setup 3 SPWs with small chunk sizes
 -------------------------------------------
@@ -446,7 +430,7 @@ cause significant issues in CASA usinng machines even with 500 GB RAM.
 To effectively process these the Setup 3 SPWs, processing in small frequency
 interval "chunks" is required (see `Chunking`_).  Chunked images of only ~10
 channels however may report biased image RMS values if emission is present
-over most channels (see `SetRms`_). Written below is a recipe for creating a
+over most channels (see `Set Rms`_). Written below is a recipe for creating a
 few dirty cubes, calculating their RMS values, and then using that RMS value
 for all chunks.
 
@@ -542,7 +526,7 @@ chunk(s).
    #chunked_configs.postprocess(ext='clean')
 
 
-.. _ParallelCasa:
+.. _Parallel CASA:
 
 Parallelized computation with multiple CASA processes
 -----------------------------------------------------
