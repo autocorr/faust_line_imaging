@@ -1,33 +1,35 @@
 User Guide
 ==========
 Welcome to the pipeline User Guide! This guide details how to (1) run the
-pipeline interactively for combinations of targets and spectral windows (SPWs),
-run batch scripts for parallel processing, and how to trouble-shoot the
-pipeline products and results. A table of contents tree may be found in the
+pipeline interactively for combinations of targets and spectral windows, (2)
+how to trouble-shoot the pipeline products and results, and (3) run batch
+scripts for parallel processing. A table of contents tree may be found in the
 left side-bar.
 
 
 Note on system resources
 ------------------------
-While spectral windows are processed in discrete frequency intervals or
-"chunks", imaging the full bandwidth cubes can require a large volume of disk
-space in order to store all intermediate products. For example, the products
-can be greater than 100GB for a single SPW and several TB for a full Setup.
-After producing the final cubes, the intermediate products may be removed.
-Please ensure that the host system has sufficient resources to run the
-pipeline. If the host system has limited storage, we recommend imaging one SPW
-at a time and removing the intermediate products after it has finished.
+Imaging the full bandwidth cubes can require a large volume of disk space to
+store all of the intermediate image products.  For example, the products can be
+greater than 100GB for a single SPW and several TB for a full Setup.  After
+producing the final cubes, the intermediate products may be removed.  Please
+ensure that the host system has sufficient resources to run the pipeline. If
+the host system has limited storage, we recommend imaging one spectral window
+(SPW) at a time and removing the intermediate products after it has finished.
 
 
 Importing the pipeline
 ----------------------
-After ensuring that the paths are configured correctly (i.e., ``DATA_DIR`` points
-to the directory containing the measurement sets and CASA is started from the
-directory set in ``PROD_DIR``). Start CASA interactively from a shell prompt
-and execute the pipeline script using ``execfile`` (see the :doc:`Installation
-<environment>` page). For an example ``PROD_DIR="/mnt/scratch/faust"`` and
-the pipeline script located in ``/mnt/scratch/faust/faust_line_imaging/faust_imaging.py``
-then an interactive session can be started by running:
+If you have not already done so, please see the :doc:`Installation
+<environment>` page for instructions on how to download and load the script in
+CASA. Please ensure that the paths are configured correctly: that ``DATA_DIR``
+points to the directory containing the measurement sets and that CASA is
+started from the directory set in ``PROD_DIR``). Next, start CASA interactively
+from a shell prompt and execute the pipeline script using ``execfile`` (see the
+:doc:`Installation <environment>` page). For an example products directory
+``PROD_DIR="/mnt/scratch/faust"`` and a pipeline script located at
+``/mnt/scratch/faust/faust_line_imaging/faust_imaging.py``, start an
+interactive session can be started by running:
 
 .. code-block:: bash
 
