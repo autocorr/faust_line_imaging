@@ -27,16 +27,16 @@ execfile('../casa_scripts/faust_imaging.py')
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.
 _NBATCHES = int(os.getenv('NBATCHES', default=4))
-_RUN_SUFFIX = 'clean'
+_FIELD = 'CB68'
+_RUN_EXT = 'clean'
 
 
 def _get_config():
     # Edit values for desired target setup here.
-    field = 'CB68'
     label = '244.936GHz_CS'
     nchunks = 50
     # Configure global settings used for all chunks here.
-    full_config = ImageConfig.from_name(field, label)
+    full_config = ImageConfig.from_name(_FIELD, label)
     full_config.rms = 0.00252  # Jy/beam
     chunked_configs = full_config.duplicate_into_chunks(nchunks=nchunks)
     return full_config, chunked_configs
@@ -71,11 +71,13 @@ def _run_subset(batch_ix):
     # Process each chunk. Starting at `batch_ix` step by every `_NBATCHES`.
     for config in chunked_configs[batch_ix::nbatches]:
         # Pipeline processes specific to a chunk may included here.
-        config.run_pipeline(ext=_RUN_SUFFIX)
+        config.run_pipeline(ext=_RUN_EXT)
 
 
 def _postprocess():
     full_config, chunked_configs = _get_config()
-    chunked_configs.postprocess(ext=_RUN_SUFFIX)
+    chunked_configs.postprocess(ext=_RUN_EXT)
+    make_all_qa_plots(_FIELD, ext=_RUN_EXT, overwrite=True)
+    make_all_moment_maps(_FIELD, ext=_RUN_EXT, overwrite=True)
 
 

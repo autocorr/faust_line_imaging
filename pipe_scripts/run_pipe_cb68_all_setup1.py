@@ -26,6 +26,8 @@ execfile('../casa_scripts/faust_imaging.py')
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.
 _NBATCHES = int(os.getenv('NBATCHES', default=4))
+_FIELD = 'CB68'
+_RUN_EXT = 'clean'
 
 
 def _preprocess():
@@ -44,9 +46,7 @@ def _run_subset(batch_ix):
         Batch index number.
     """
     # Configure parameters here.
-    field = 'CB68'
     spw_set = SPW_S1  # defined in `faust_imaging.py`
-    ext = 'clean'
     # Run batch.
     nbatches = _NBATCHES
     batch_ix = int(batch_ix)
@@ -59,11 +59,12 @@ def _run_subset(batch_ix):
         # Pipeline processes specific to SPW may be included here. The
         # `.run_pipeline` method will automatically perform the post-
         # processing.
-        config = ImageConfig.from_name(field, label)
-        config.run_pipeline(ext=ext)
+        config = ImageConfig.from_name(_FIELD, label)
+        config.run_pipeline(ext=_RUN_EXT)
 
 
 def _postprocess():
-    pass
+    make_all_qa_plots(_FIELD, ext=_RUN_EXT, overwrite=True)
+    make_all_moment_maps(_FIELD, ext=_RUN_EXT, overwrite=True)
 
 

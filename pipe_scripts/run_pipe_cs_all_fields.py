@@ -25,6 +25,7 @@ execfile('../casa_scripts/faust_imaging.py')
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.
 _NBATCHES = int(os.getenv('NBATCHES', default=4))
+_RUN_EXT = 'clean'
 _LABEL = '244.936GHz_CS'
 
 
@@ -42,7 +43,6 @@ def _run_subset(batch_ix):
         Batch index number.
     """
     # Configure parameters here.
-    ext = 'clean'
     # Run batch.
     nbatches = _NBATCHES
     batch_ix = int(batch_ix)
@@ -55,10 +55,12 @@ def _run_subset(batch_ix):
         # `.run_pipeline` method will automatically perform the post-
         # processing.
         config = ImageConfig.from_name(field, _LABEL)
-        config.run_pipeline(ext=ext)
+        config.run_pipeline(ext=_RUN_EXT)
 
 
 def _postprocess():
-    pass
+    for field in ALL_FIELD_NAMES:
+        make_all_qa_plots(field, ext=_RUN_EXT, overwrite=True)
+        make_all_moment_maps(field, ext=_RUN_EXT, overwrite=True)
 
 

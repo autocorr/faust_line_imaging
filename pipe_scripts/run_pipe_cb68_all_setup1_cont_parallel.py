@@ -23,16 +23,18 @@ In this example:
 # `faust_imaging.py`.
 execfile('../casa_scripts/faust_imaging.py')
 if os.getenv('USING_SHARED_MEM') == 'true':
-    DATA_DIR = '/dev/shm/'  # defined in `faust_imaging.py`
+    DATA_DIR = '/dev/shm/'  # mutating definition from `faust_imaging.py`
     os.chdir('/dev/shm')
     if not os.path.exists('images'):
         os.symlink(IMAG_DIR, 'images')
+        os.symlink(PLOT_DIR, 'plots')
+        os.symlink(MOMA_DIR, 'moments')
 
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.
 _NBATCHES = int(os.getenv('NBATCHES', default=4))
-_RUN_SUFFIX = 'clean'
 _FIELD = 'CB68'
+_RUN_EXT = 'clean'
 _SETUP = 1
 _SPW_SET = SPWS_BY_SETUP[_SETUP]  # defined in `faust_imaging.py`
 
@@ -98,11 +100,13 @@ def _run_subset(batch_ix):
         # Pipeline processes specific to the config may be included here. The
         # `.run_pipeline` method will automatically perform the post-
         # processing for narrow-band SPWs but not for the continuum chunks.
-        config.run_pipeline(ext=_RUN_SUFFIX)
+        config.run_pipeline(ext=_RUN_EXT)
 
 
 def _postprocess():
     chunked_configs = _get_cont_chunks()
-    chunked_configs.postprocess(ext=_RUN_SUFFIX)
+    chunked_configs.postprocess(ext=_RUN_EXT)
+    make_all_qa_plots(_FIELD, ext=_RUN_EXT, overwrite=True)
+    make_all_moment_maps(_FIELD, ext=_RUN_EXT, overwrite=True)
 
 
