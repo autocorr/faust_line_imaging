@@ -126,14 +126,15 @@ of the pipeline please refer to the :doc:`Cookbook <recipes>`.
 
 Quality assurance plots and moment maps
 ---------------------------------------
-After the pipeline has been run, the next steps are to validate the results by
-creating quality assurance plots for visual inspection and moment maps. The QA
-plots generate channel maps of the restored image and residual with the
-clean-mask overplotted. Only channels containing significant emission are plotted
-(regardless of whether the emission is masked). The default threshold to show
-such channels is 6-times the full-cube RMS.  To create the quality assurance
-plots call the function :func:`faust_imaging.make_all_qa_plots` for the desired
-field and extension (e.g., "clean" as used above).
+After the pipeline has been run, the next step is to validate the results.
+This is done by creating quality assurance plots for visual inspection and
+moment maps. The QA plots generate channel maps of the restored image and
+residual with the clean-mask overplotted. Only channels containing significant
+emission are plotted (regardless of whether the emission is masked). The
+default threshold to show such channels is 6-times the full-cube RMS.  To
+create the quality assurance plots call the function
+:func:`faust_imaging.make_all_qa_plots` for the desired field and extension
+(e.g., "clean" as used above).
 
 .. code-block:: python
 
@@ -188,18 +189,18 @@ skimage, matplotlib, aplpy, radio_beam, and astropy).
 
 Trouble-shooting
 ----------------
-Having made the deconvolved image products and the quality assurance plots, the
+With the deconvolved image products and the quality assurance plots made, the
 next step is to inspect the results and resolve whether they are satisfactory
-for the science-goals of the Source Team.  A few common cases where the
-deconvolution and/or masking have produced undesirable results are detailed
-below.
+for the science-goals of the Source Team. This section describes a few common
+cases where the deconvolution produces unsatisfactory results and what steps
+to take to improve the imaging.
 
 Extended negative emission
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-If the emission is extended and has negative-intensity artifacts or "bowls" due
-to missing short spacings, has ``tclean`` masked any of these negative
-features? It is undesirable to include these artifacts in the source model.
-If they are included, the auto-masking parameters may be tuned to limit
+*Has ``tclean`` masked any strong negative-intensity artifacts or "bowls"?*
+Extended emission that is not properly recovered due to missing short-spacings
+can introduce negative bowls that should not be cleaned and added to the source
+model.  If this is observed, the auto-masking parameters may be tuned to limit
 the masking of negative emission.
 
 .. code-block:: python
@@ -213,13 +214,13 @@ continuum emission the central protostellar source(s). Because the visibility
 data is continuum subtracted, this absorption will appear negative in the
 restored images.  This absorption should be masked and cleaned.
 
-Overly-aggressive clean masks
+Overly aggressive clean masks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Does the automated clean-mask appear to be overly aggressive and include large
-areas of what does not appear to be genuine emission?  This effect has been
-known to appear in earlier iterations of the pipeline for certain fields.  The
-nature of the auto-multithresh algorithm gives these spurious masks an "amoeba"
-or "algae" like appearance, as can be seen in the following figure:
+*Does the automated clean-mask appear to be overly aggressive and include large
+areas of dubious emission?*  This effect has been known to appear in earlier
+iterations of the pipeline for certain fields.  The nature of the
+auto-multithresh algorithm gives these spurious masks an "amoeba" or "algae"
+like appearance, as can be seen in the following figure:
 
 .. figure:: _images/amoeba_example.png
    :width: 400
@@ -243,8 +244,8 @@ the mask.
 
 Significant uncleaned emission
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If the automated masking appears to have left significant emission unmasked
-and thus uncleaned. This can frequently be diagnosed in the QA plots of the
+*Has the automated masking methods left significant levels of emission unmasked,
+and thus uncleaned?* This can frequently be diagnosed in the QA plots of the
 residual image. The investigator may use their discretion to decide whether
 such emission produces adverse affects and should be cleaned.  Multiple methods
 exist to fix such images without performing the full pipeline over again.
@@ -278,6 +279,7 @@ More information on manually restarting one chunk is described in the Cookbook
 
 Inconsistent masking from varying noise
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*Are an unusual number of noise spikes masked at the band edges?*
 The sensitivity as a function of frequency for some SPWs is affected by
 atmospheric or telluric lines. Examples include the "231.221_13CS" and
 "231.322_N2Dp" SPWs in Setup 1. An atmospheric ozone feature between these two
@@ -288,6 +290,7 @@ image-chunk sizes should give more uniform results.
 
 Divergences or negative edge-features
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*Do very strong, spurious features appear at the edge of the mask or field?*
 It is a known issue that the multiscale clean implementation in CASA can
 introduce instability when using clean masks. In some circumstances
 ``tclean`` can diverge at the edge of the clean mask or primary beam mask
