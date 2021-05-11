@@ -588,7 +588,7 @@ Next in the Python script, modify the template function ``_get_config`` for the
 desired field, transition, and number of chunks. Global configuration settings
 can also be set here by modifying the attributes of ``full_config`` (such as
 the :attr:`faust_imaging.ImageConfig.rms` for example, or the auto-multithresh
-parameters).  Note that the ``_RUN_SUFFIX`` global variable may be changed to
+parameters).  Note that the ``_RUN_EXT`` global variable may be changed to
 distinguish different runs, but intermediate products such as the "nomask" and
 "dirty" products will be over-written. For science cases that require per-chunk
 configuration, program logic may be added to ``_run_subset``.
