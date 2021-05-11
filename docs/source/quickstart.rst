@@ -144,10 +144,10 @@ called after new pipeline jobs have been run. Plots will be written to
 implemented inefficiently with ``matplotlib`` and ``imshow``, and thus creating
 the plots for the Setup 3 SPWs may require >50 GB of memory.
 
-.. image:: images/cb68_qa_image_238.png
+.. image:: _images/cb68_qa_image_238.png
    :width: 300
 
-.. image:: images/cb68_qa_residual_238.png
+.. image:: _images/cb68_qa_residual_238.png
    :width: 300
 
 The above figures show channel index number 238 of CB68 CS (5-4) for the
@@ -176,7 +176,7 @@ written to the ``moments/`` directory or the value of ``MOMA_DIR``. The images
 can be inspected with your FITS viewer of choice. The figure below shows an
 example matplotlib visualization of the moments for CB68 CS (5-4).
 
-.. image:: images/cb68_moments.png
+.. figure:: _images/cb68_moments.png
    :width: 640
 
 The above figures can be generated using the ``util/moment_plotting.py`` script
@@ -219,7 +219,7 @@ known to appear in earlier iterations of the pipeline for certain fields.  The
 nature of the auto-multithresh algorithm gives these spurious masks an "amoeba"
 or "algae" like appearance, as can be seen in the following figure:
 
-.. image:: images/amoeba_example.png
+.. figure:: _images/amoeba_example.png
    :width: 400
 
 In some circumstances, all pixels in a channel may be included in the mask.
