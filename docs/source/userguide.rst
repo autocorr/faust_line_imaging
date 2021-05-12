@@ -26,10 +26,10 @@ CASA. Please ensure that the paths are configured correctly: that ``DATA_DIR``
 points to the directory containing the measurement sets and that CASA is
 started from the directory set in ``PROD_DIR``). Next, start CASA interactively
 from a shell prompt and execute the pipeline script using ``execfile`` (see the
-:doc:`Installation <environment>` page). For an example products directory
-``PROD_DIR="/mnt/scratch/faust"`` and a pipeline script located at
-``/mnt/scratch/faust/faust_line_imaging/faust_imaging.py``, start an
-interactive session can be started by running:
+:doc:`Installation <environment>` page). To start an interactive session with
+an example products directory of ``PROD_DIR="/mnt/scratch/faust"`` and a
+pipeline script located at
+``/mnt/scratch/faust/faust_line_imaging/faust_imaging.py``, run:
 
 .. code-block:: bash
 
@@ -54,31 +54,37 @@ the global variable ``ALL_FIELD_NAMES``:
    print(ALL_FIELD_NAMES)
 
 SPWs are assigned unique labels based on the principle molecular tracer
-targeted in the window. These labels are prefixed by the truncated rest
-frequency of the transition and followed by the simple for the molecule. The CS
-(5-4) transition in Setup 2 has the label "244.936GHz_CS". All valid SPW labels
-can be read from the global variable ``ALL_SPW_LABELS``:
+targeted in the window. These labels are prefixed by the rest frequency of the
+transition (truncated to the nearest MHz) and followed by the simple formula
+name for the molecule. The CS (5-4) transition in Setup 2, for example, has the
+label "244.936GHz_CS". All valid SPW labels can be read from the global
+variable ``ALL_SPW_LABELS``:
 
 .. code-block:: python
 
    print(ALL_SPW_LABELS)
 
-To image narrow windows around secondary lines without imaging the full bandpass
-of a SPW, see the Cookbook section :any:`Imaging cut-out velocity windows`.
+To image narrow-bandwidth "cut-outs" around lines without imaging the full
+bandpass of a SPW, see the Cookbook section :any:`Imaging cut-out velocity
+windows`.
 
 
 Running the pipeline
 --------------------
 The primary user interface for running the pipeline tasks is through the Python
 class :class:`faust_imaging.ImageConfig`, specifically the constructor
-:meth:`faust_imaging.ImageConfig.from_name`. These and similar links point to
+:meth:`faust_imaging.ImageConfig.from_name`. The preceding links point to
 the API documentation that further describe the calling convention and
 arguements functions and classes take. Most of this information can also be
 found in the docstrings as well, which can be read by running ``help <ITEM>``
-or ``<ITEM>?`` from the CASA prompt. Once an instance of ``ImageConfig`` is
-created and set with the desired options, the pipeline can be be run using the
-:meth:`faust_imaging.ImageConfig.run_pipeline` bound method. As a minimal
-example:
+or ``<ITEM>?`` from the CASA prompt. The :any:`Pipeline Tasks` section of the
+Cookbook describes the individual processing steps of the pipeline in detail.
+
+Once an instance of ``ImageConfig`` is created and set with the desired
+options, the pipeline can be be run using the
+:meth:`faust_imaging.ImageConfig.run_pipeline` bound method. To run the
+pipeline for "CB68" and the SPW containing CS (5-4) in Setup 2 with the
+default pipeline parameters, run:
 
 .. code-block:: python
 
@@ -90,10 +96,11 @@ example:
 
 The default parameters will use a Briggs robust *uv*-weighting of 0.5 and
 jointly deconvolve all array configurations (12m & 7m). We recommend imaging
-one line first to test that the pipeline works and produces sensible results
-before moving to batched processing. The final pipeline products will have a
-suffix "_clean" before the file extension (e.g., ".image"). In the above
-example, the final image (primary beam corrected) will be written to:
+one "line of interest" first to test that the pipeline works and produces
+sensible results before moving to batched processing. The final pipeline
+products will have a suffix "_clean" before the CASA image extension (e.g.,
+".image" or ".mask"). In the above example, the final primary beam corrected
+image will be written to:
 
 .. code-block:: bash
 
@@ -191,13 +198,13 @@ Trouble-shooting
 ----------------
 With the deconvolved image products and the quality assurance plots made, the
 next step is to inspect the results and resolve whether they are satisfactory
-for the science-goals of the Source Team. This section describes a few common
-cases where the deconvolution produces unsatisfactory results and what steps
-to take to improve the imaging.
+for the science-goals of the Source Team. The following sub-sections describe
+common scenarios where the results are problematic and steps that may be taken
+to improve the imaging.
 
 Extended negative emission
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-*Has ``tclean`` masked any strong negative-intensity artifacts or "bowls"?*
+*Are any strong negative-intensity artifacts or "bowls" masked?*
 Extended emission that is not properly recovered due to missing short-spacings
 can introduce negative bowls that should not be cleaned and added to the source
 model.  If this is observed, the auto-masking parameters may be tuned to limit
@@ -214,27 +221,37 @@ continuum emission the central protostellar source(s). Because the visibility
 data is continuum subtracted, this absorption will appear negative in the
 restored images.  This absorption should be masked and cleaned.
 
-Overly aggressive clean masks
+Overly permissive clean masks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*Does the automated clean-mask appear to be overly aggressive and include large
-areas of dubious emission?*  This effect has been known to appear in earlier
-iterations of the pipeline for certain fields.  The nature of the
-auto-multithresh algorithm gives these spurious masks an "amoeba" or "algae"
-like appearance, as can be seen in the following figure:
+*Does the generated clean-mask appear to be overly permissive and include large
+areas without apparent emission?*  This effect has been known to appear in
+earlier iterations of the pipeline for certain fields with many execution
+blocks.  The pipeline uses the `auto-multithresh
+<https://casaguides.nrao.edu/index.php/Automasking_Guide>`_ algorithm in
+``tclean`` to procedurally generate the clean masks with an initial mask
+generated from a partially deconvolved version of the image.  If the parameters
+of the auto-multithresh algorithm (`Kepley et al. (2020)
+<https://iopscience.iop.org/article/10.1088/1538-3873/ab5e14>`_) are improperly
+tuned, the mask can undergo something similar to runaway growth yielding
+an "amoeba" like appearance, as can be seen in the following figure:
 
 .. figure:: _images/amoeba_example.png
    :width: 400
+   :caption: The mask includes a large fraction of the field without apparent emission.
 
-In some circumstances, all pixels in a channel may be included in the mask.
-Note that such cases will appear to have no mask when using the ``casaviewer``
-to plot a contour-diagram.  This effect seems to be largely mitigated with the
-latest set of default parameters, but careful attention should be paid in case
-it appears.
+In some circumstances, all pixels in a channel may even be included in the
+mask.  Note that such cases will appear to have no mask when using the
+``casaviewer`` to plot a contour-diagram.  This effect seems to be largely
+mitigated with the latest set of default parameters, but careful attention
+should be paid in case it appears.  Spurious masking will have adverse effects
+on both the image quality and the moment maps. Over-cleaning within such a mask
+may corrupt the noise statistics and include artifacts in the source model. The
+clean mask is also used for selecting pixels to use in creating the moment
+maps, and can produce poor results when large areas of effectively just noise
+are included.
 
-Spurious and overly-aggressive masking may change the noise statistics and
-include artifacts in the source model and should be re-imaged.  The most
-straightforward solution is to raise the significance threshold used to "grow"
-the mask.
+The most straightforward solution is to raise the significance threshold used
+to "grow" the mask.
 
 .. code-block:: python
 
@@ -244,17 +261,17 @@ the mask.
 
 Significant uncleaned emission
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*Has the automated masking methods left significant levels of emission unmasked,
-and thus uncleaned?* This can frequently be diagnosed in the QA plots of the
+*Has the automated masking left significant levels of emission unmasked, and
+thus uncleaned?* This can frequently be diagnosed in the QA plots of the
 residual image. The investigator may use their discretion to decide whether
 such emission produces adverse affects and should be cleaned.  Multiple methods
-exist to fix such images without performing the full pipeline over again.
-Namely, the final clean may be restarted with:
+exist to fix such images without re-running the full pipeline over again.  The
+final clean may be restarted with:
 
-   #. Using auto-multithresh but with a lower 'lownoisethreshold'.
-   #. Using auto-multithresh and manually adding regions to the existing mask.
-   #. Without using auto-multithresh and manually adding regions to the
-      existing mask.
+   #. auto-multithresh but with a lower 'lownoisethreshold'
+   #. auto-multithresh and manually adding regions to the existing mask
+   #. without using auto-multithresh and manually adding regions to the
+      existing mask
 
 The pipeline processes discrete image "chunks" in frequency to improve
 performance and ease memory constraints. Restarting thus requires operating
@@ -274,6 +291,31 @@ is restarted with the interactive cleaning.
    #   the "blue rightward arrow" icon immediately if the emission is faint.
    chunked_configs.postprocess(ext='clean')
 
+Alternatively, the procedure used to generate the initial "seed" mask used
+can be changed to include larger scales or lower-significance emission. The
+final clean run without manual intervention. Following the same conventions
+as in the previous example:
+
+.. code-block:: python
+
+   full_config = ImageConfig.from_name('CB68', '244.936GHz_CS')
+   chunked_configs = full_config.duplicate_into_chunks()
+   problematic_config = chunked_configs.get_chunk_from_channel(238)
+   # Add a fourth scale to the seed mask generation using a Gaussian
+   # kernel with a FWHM of 5 arcsec. The default scales are 0 (unsmoothed),
+   # 1, and 3 arcsec.
+   problematic_config.mask_ang_scales = [0, 1, 3, 5]  # arcsec
+   # The default significance threshold applied to each scale is 5 sigma,
+   # here we use 4 sigma.
+   problematic_config.make_seed_mask(sigma=4.0)
+   # Re-run the deconvolution using the new seed mask.
+   problematic_config.clean_line(ext='clean')
+   # ^ The casaviewer will appear for manual masking. Identify the channel
+   #   with the offending emission (the channel indices will now be of the chunk)
+   #   and draw an addition to the mask. Often times it suffices to select
+   #   the "blue rightward arrow" icon immediately if the emission is faint.
+   chunked_configs.postprocess(ext='clean')
+
 More information on manually restarting one chunk is described in the Cookbook
 :any:`Restarting one chunk` section.
 
@@ -281,12 +323,12 @@ Inconsistent masking from varying noise
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 *Are an unusual number of noise spikes masked at the band edges?*
 The sensitivity as a function of frequency for some SPWs is affected by
-atmospheric or telluric lines. Examples include the "231.221_13CS" and
-"231.322_N2Dp" SPWs in Setup 1. An atmospheric ozone feature between these two
-windows increases the RMS by about 20% towards the respective band edge.  In
-some circumstances, the use of a single RMS can lead to over-masking of many
-small noise spikes near the band edge. If this is the case, then using smaller
-image-chunk sizes should give more uniform results.
+atmospheric lines. Examples include the "231.221_13CS" and "231.322_N2Dp" SPWs
+in Setup 1. An atmospheric ozone feature between these two windows increases
+the RMS by about 20% towards the respective band edge.  In some circumstances,
+the use of a single RMS can lead to over-masking of many small noise spikes
+near the band edge. If this is the case, then using smaller image-chunk sizes
+should give more uniform results.
 
 Divergences or negative edge-features
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -311,6 +353,17 @@ appear, try running the pipeline with a lower ``gain`` and higher
    config.cyclefactor = 2.5  # default 2.0
    config.run_pipeline()
 
+The above changes to the loop gain and cyclefactor may make ``tclean``
+run much more slowly however. Alternative solutions are to reduce the
+size of the largest scale used by multiscale-clean or omit the largest
+scale altogether:
+
+.. code-block:: python
+
+   config = ImageConfig.from_name('CB68', '244.936GHz_CS')
+   config.scales = [0, 15, 45]  # pix; default [0, 15, 45, 135]
+   # the cell size in arcsec can be read from `config.dset.cell`
+   config.run_pipeline()
 
 Running the parallel pipeline
 -----------------------------
