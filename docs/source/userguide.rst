@@ -287,16 +287,20 @@ cleaned and the offending chunk is restarted with the interactive cleaning.
    # even if "under the hood" the processes are being applied to each
    # sub-image or "chunk".
    full_config = ImageConfig.from_name('CB68', '244.936GHz_CS')
+
    # To get the frequency chunk with issues, we manually retrieve the
    # `ImageConfig` instances for every chunk.
    chunked_configs = full_config.duplicate_into_chunks()
    problematic_config = chunked_configs.get_chunk_from_channel(238)
+
    # Restart tclean interactively using the existing clean mask and model.
    problematic_config.clean_line(ext='clean', restart=True, interactive=True)
    # ^ The casaviewer will appear for manual masking. Identify the channel
    #   with the offending emission (the channel indices will now be of the chunk)
    #   and draw an addition to the mask. Often times it suffices to select
    #   the "blue rightward arrow" icon immediately if the emission is faint.
+
+   # Postprocess the results to reproduce the final full-cube products
    chunked_configs.postprocess(ext='clean')
 
 Alternatively, the procedure used to generate the initial "seed" mask can be
@@ -309,19 +313,18 @@ in the previous example:
    full_config = ImageConfig.from_name('CB68', '244.936GHz_CS')
    chunked_configs = full_config.duplicate_into_chunks()
    problematic_config = chunked_configs.get_chunk_from_channel(238)
+
    # Add a fourth scale to the seed mask generation using a Gaussian
    # kernel with a FWHM of 5 arcsec. The default scales are 0 (unsmoothed),
    # 1, and 3 arcsec.
    problematic_config.mask_ang_scales = [0, 1, 3, 5]  # arcsec
+
    # The default significance threshold applied to each scale is 5 sigma,
    # here we use 4 sigma.
    problematic_config.make_seed_mask(sigma=4.0)
    # Re-run the deconvolution using the new seed mask.
    problematic_config.clean_line(ext='clean')
-   # ^ The casaviewer will appear for manual masking. Identify the channel
-   #   with the offending emission (the channel indices will now be of the chunk)
-   #   and draw an addition to the mask. Often times it suffices to select
-   #   the "blue rightward arrow" icon immediately if the emission is faint.
+
    chunked_configs.postprocess(ext='clean')
 
 Inconsistent masking from varying noise
