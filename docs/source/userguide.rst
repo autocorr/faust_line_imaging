@@ -340,14 +340,13 @@ should give more uniform results.
 
 Divergences or negative edge-features
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*Do very strong, spurious features appear at the edge of the mask or field?*
+*Do very strong, negative features appear at the edge of the mask or field?*
 It is a known issue that the multiscale clean implementation in CASA can
-introduce instability when using clean masks. In some circumstances
-``tclean`` can diverge at the edge of the clean mask or primary beam mask
-and insert spurious positive-intensity features into the model. These
-features are usually on large scales (often similar to the ACA synthesized
-beam) and produce strong negative-intensity features in the restored
-image.
+be unstable when also using clean masks. In some circumstances ``tclean`` can
+diverge at the edge of the clean mask or primary beam mask and insert spurious
+positive-intensity features into the model. These features are usually on large
+scales (often similar to the ACA synthesized beam) and produce strong
+negative-intensity features in the restored image.
 
 The default parameters have been found to largely stabilize ``tclean`` by
 slowing the rate of convergence in the minor cycle. If these divergences
