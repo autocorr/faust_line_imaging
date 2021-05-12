@@ -291,10 +291,10 @@ is restarted with the interactive cleaning.
    #   the "blue rightward arrow" icon immediately if the emission is faint.
    chunked_configs.postprocess(ext='clean')
 
-Alternatively, the procedure used to generate the initial "seed" mask used
-can be changed to include larger scales or lower-significance emission. The
-final clean run without manual intervention. Following the same conventions
-as in the previous example:
+Alternatively, the procedure used to generate the initial "seed" mask can be
+modified in order to include larger scales or lower-significance emission. The
+final clean run without manual intervention. Following the same conventions as
+in the previous example:
 
 .. code-block:: python
 
