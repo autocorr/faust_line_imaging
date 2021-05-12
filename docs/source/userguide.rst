@@ -298,14 +298,16 @@ restarted with the interactive cleaning.
    # (Method 1) Restart tclean non-interactively with a lower
    # `lowernoisethreshold` for auto-multithresh.
    #problematic_config.autom_kwargs['lownoisethreshold'] = 1.0
-   #problematic_config.clean_line(ext='clean')
+   #problematic_config.clean_line(ext='clean', restart=True)
 
-   # (Method 2) Restart tclean interactively using the existing clean mask and model.
+   # (Method 2) Restart tclean interactively using the existing clean mask and
+   # model.
    problematic_config.clean_line(ext='clean', restart=True, interactive=True)
    # ^ The casaviewer will appear for manual masking. Identify the channel
-   #   with the offending emission (the channel indices will now be of the chunk)
-   #   and draw an addition to the mask. Often times it suffices to select
-   #   the "blue rightward arrow" icon immediately if the emission is faint.
+   #   with the offending emission (the channel indices will now be of the
+   #   chunk) and draw an addition to the mask. Often times it suffices to
+   #   select the "blue rightward arrow" icon immediately if the emission is
+   #   faint.
 
    # (Method 3) Restart tclean interactively without auto-multithresh, using
    # a static mask that we can add to.
