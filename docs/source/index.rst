@@ -6,7 +6,7 @@ ALMA `FAUST <http://faust-alma.riken.jp/>`_ Large Program. For instructions on
 how to download the pipeline script and setup your host environment in order to
 use the pipeline see the :doc:`Installation <environment>` page. Once all
 datasets and paths are in the appropriate locations, please refer to the
-:doc:`User Guide <quickstart>` for information on executing pipeline jobs.
+:doc:`User Guide <userguide>` for information on executing pipeline jobs.
 Detailed descriptions of the pipeline components and how to configure them
 may be found in the :doc:`Cookbook <recipes>`.
 
@@ -25,7 +25,7 @@ Documentation
 
    Homepage <self>
    environment
-   quickstart
+   userguide
    recipes
 
 

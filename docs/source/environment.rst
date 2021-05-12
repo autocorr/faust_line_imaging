@@ -111,7 +111,7 @@ with ``execfile`` in CASA.
 Next steps
 ----------
 Congratulations! Now that the environment is setup, please now refer to the
-:doc:`quick-start guide <quickstart>` or click the "Next" button for
-instructions on running the pipeline.
+:doc:`User Guide <userguide>` or click the "Next" button for instructions on
+running the pipeline.
 
 
