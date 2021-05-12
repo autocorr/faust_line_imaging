@@ -273,17 +273,25 @@ final clean may be restarted with:
    #. without using auto-multithresh and manually adding regions to the
       existing mask
 
+
 The pipeline processes discrete image "chunks" in frequency to improve
-performance and ease memory constraints. Restarting thus requires operating
-on the chunk containing the offending emission. In the following example,
-channel index number 238 is insufficiently cleaned and the offending chunk
-is restarted with the interactive cleaning.
+performance and ease memory constraints.  Restarting thus requires operating on
+the chunk containing the offending emission.  More information on manually
+restarting one chunk is described in the Cookbook :any:`Restarting one chunk`
+section.  In the following example, channel index number 238 is insufficiently
+cleaned and the offending chunk is restarted with the interactive cleaning.
 
 .. code-block:: python
 
+   # The standard, full instance will apply operations to the entire SPW,
+   # even if "under the hood" the processes are being applied to each
+   # sub-image or "chunk".
    full_config = ImageConfig.from_name('CB68', '244.936GHz_CS')
+   # To get the frequency chunk with issues, we manually retrieve the
+   # `ImageConfig` instances for every chunk.
    chunked_configs = full_config.duplicate_into_chunks()
    problematic_config = chunked_configs.get_chunk_from_channel(238)
+   # Restart tclean interactively using the existing clean mask and model.
    problematic_config.clean_line(ext='clean', restart=True, interactive=True)
    # ^ The casaviewer will appear for manual masking. Identify the channel
    #   with the offending emission (the channel indices will now be of the chunk)
@@ -315,9 +323,6 @@ in the previous example:
    #   and draw an addition to the mask. Often times it suffices to select
    #   the "blue rightward arrow" icon immediately if the emission is faint.
    chunked_configs.postprocess(ext='clean')
-
-More information on manually restarting one chunk is described in the Cookbook
-:any:`Restarting one chunk` section.
 
 Inconsistent masking from varying noise
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
