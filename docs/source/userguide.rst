@@ -237,7 +237,8 @@ an "amoeba" like appearance, as can be seen in the following figure:
 
 .. figure:: _images/amoeba_example.png
    :width: 400
-   :caption: The mask includes a large fraction of the field without apparent emission.
+
+   The mask includes a large fraction of the field without apparent emission.
 
 In some circumstances, all pixels in a channel may even be included in the
 mask.  Note that such cases will appear to have no mask when using the
@@ -272,7 +273,6 @@ final clean may be restarted with:
    #. auto-multithresh and manually adding regions to the existing mask
    #. without using auto-multithresh and manually adding regions to the
       existing mask
-
 
 The pipeline processes discrete image "chunks" in frequency to improve
 performance and ease memory constraints.  Restarting thus requires operating on
