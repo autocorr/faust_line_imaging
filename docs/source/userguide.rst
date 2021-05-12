@@ -273,13 +273,15 @@ final clean may be restarted with:
    #. auto-multithresh and manually adding regions to the existing mask
    #. without using auto-multithresh and manually adding regions to the
       existing mask
+   #. an initial mask including fainter and more extended emission
 
-The pipeline processes discrete image "chunks" in frequency to improve
-performance and ease memory constraints.  Restarting thus requires operating on
-the chunk containing the offending emission.  More information on manually
-restarting one chunk is described in the Cookbook :any:`Restarting one chunk`
-section.  In the following example, channel index number 238 is insufficiently
-cleaned and the offending chunk is restarted with the interactive cleaning.
+The following example describes methods 1-3.  The pipeline processes discrete
+image "chunks" in frequency to improve performance and ease memory constraints.
+Restarting thus requires operating on the chunk containing the offending
+emission.  More information on manually restarting one chunk is described in
+the Cookbook :any:`Restarting one chunk` section.  In the following example,
+channel index number 238 is insufficiently cleaned and the offending chunk is
+restarted with the interactive cleaning.
 
 .. code-block:: python
 
@@ -293,20 +295,30 @@ cleaned and the offending chunk is restarted with the interactive cleaning.
    chunked_configs = full_config.duplicate_into_chunks()
    problematic_config = chunked_configs.get_chunk_from_channel(238)
 
-   # Restart tclean interactively using the existing clean mask and model.
+   # (Method 1) Restart tclean non-interactively with a lower
+   # `lowernoisethreshold` for auto-multithresh.
+   #problematic_config.autom_kwargs['lownoisethreshold'] = 1.0
+   #problematic_config.clean_line(ext='clean')
+
+   # (Method 2) Restart tclean interactively using the existing clean mask and model.
    problematic_config.clean_line(ext='clean', restart=True, interactive=True)
    # ^ The casaviewer will appear for manual masking. Identify the channel
    #   with the offending emission (the channel indices will now be of the chunk)
    #   and draw an addition to the mask. Often times it suffices to select
    #   the "blue rightward arrow" icon immediately if the emission is faint.
 
+   # (Method 3) Restart tclean interactively without auto-multithresh, using
+   # a static mask that we can add to.
+   #problematic_config.clean_line(ext='clean', mask_method='fixed',
+   #            restart=True, interactive=True)
+
    # Postprocess the results to reproduce the final full-cube products
    chunked_configs.postprocess(ext='clean')
 
 Alternatively, the procedure used to generate the initial "seed" mask can be
-modified in order to include larger scales or lower-significance emission. The
-final clean run without manual intervention. Following the same conventions as
-in the previous example:
+modified in order to include larger scales or lower-significance emission
+(method 4). The final clean run without manual intervention. Following the same
+conventions as in the previous example:
 
 .. code-block:: python
 
