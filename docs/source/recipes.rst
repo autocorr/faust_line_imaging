@@ -617,3 +617,17 @@ requested on the line:
 should be more than the number of CASA instances/processes set by ``NBATCHES``.
 
 
+Applying a uv-taper
+-------------------
+Source "IRAS_15398-3359" happens to have higher-than-requested angular
+resolution. To match the requested resolution (0.32 arcsec), we can apply a
+:math:`1100\, \mathrm{k}\lambda` *uv*-taper:
+
+.. code-block:: python
+
+   config = ImageConfig.from_name('IRAS_15398-3359', '244.936GHz_CS')
+   # Use a 1100 kilo-lambda (wavelength) circular taper.
+   config.uvtaper = ['1100klambda']
+   config.run_pipeline()
+
+

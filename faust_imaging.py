@@ -1106,6 +1106,7 @@ class ImageConfig(object):
     smallscalebias = -1.0
     gain = 0.05
     cyclefactor = 2.0
+    uvtaper = None
     parallel = MPIEnvironment().is_mpi_enabled
 
     def __init__(self, dset, spw, fullcube=True, weighting=0.5, chunk=None):
@@ -1136,6 +1137,7 @@ class ImageConfig(object):
         smallscalebias : number
         gain : number
         cyclefactor : number
+        uvtaper : (list, None)
         parallel : bool
             Is MPI enabled in CASA?
         """
@@ -1444,6 +1446,7 @@ class ImageConfig(object):
             gridder=dset.gridder,
             weighting=self.weighting_kind,
             robust=self.robust,
+            uvtaper=self.uvtaper,
             perchanweightdensity=PERCHANWT,
             # deconvolver parameters
             pblimit=dset.pblimit,
@@ -1503,6 +1506,7 @@ class ImageConfig(object):
             gridder=dset.gridder,
             weighting=self.weighting_kind,
             robust=self.robust,
+            uvtaper=self.uvtaper,
             perchanweightdensity=PERCHANWT,
             # deconvolver parameters
             pblimit=dset.pblimit,
@@ -1559,6 +1563,7 @@ class ImageConfig(object):
             gridder=dset.gridder,
             weighting=self.weighting_kind,
             robust=self.robust,
+            uvtaper=self.uvtaper,
             perchanweightdensity=PERCHANWT,
             # deconvolver parameters
             deconvolver='multiscale',
@@ -1694,6 +1699,7 @@ class ImageConfig(object):
             gridder=dset.gridder,
             weighting=self.weighting_kind,
             robust=self.robust,
+            uvtaper=self.uvtaper,
             perchanweightdensity=PERCHANWT,
             # deconvolver parameters
             deconvolver='multiscale',
