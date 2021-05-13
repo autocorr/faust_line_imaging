@@ -22,13 +22,13 @@ Importing the pipeline
 ----------------------
 If you have not already done so, please see the :doc:`Installation
 <environment>` page for instructions on how to download and load the script in
-CASA. Please ensure that the paths are configured correctly: that ``DATA_DIR``
-points to the directory containing the measurement sets and that CASA is
-started from the directory set in ``PROD_DIR``). Next, start CASA interactively
-from a shell prompt and execute the pipeline script using ``execfile`` (see the
-:doc:`Installation <environment>` page). To start an interactive session with
-an example products directory of ``PROD_DIR="/mnt/scratch/faust"`` and a
-pipeline script located at
+CASA. Please ensure that the paths are configured correctly in the
+``faust_imaging.cfg`` file: (1) that ``DATA_DIR`` points to the directory
+containing the measurement sets and (2) that CASA is started from the directory
+set in ``PROD_DIR``). Next, start CASA interactively from a shell prompt and
+execute the pipeline script using ``execfile`` (see the :doc:`Installation
+<environment>` page). To start an interactive session with an example products
+directory of ``PROD_DIR="/mnt/scratch/faust"`` and a pipeline script located at
 ``/mnt/scratch/faust/faust_line_imaging/faust_imaging.py``, run:
 
 .. code-block:: bash

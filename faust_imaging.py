@@ -31,6 +31,7 @@ import warnings
 from glob import glob
 from copy import deepcopy
 from collections import (OrderedDict, Iterable)
+from ConfigParser import ConfigParser
 
 import numpy as np
 from scipy import special
@@ -67,10 +68,14 @@ plt.ioff()  # turn off interactive GUI
 # Global configuration options
 ###############################################################################
 
-# Global paths. The `DATA_DIR` and `PROD_DIR` variables below are intended to
-# be modified by the user for compatibility with their specific host system.
-DATA_DIR = '/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs/'
-PROD_DIR = '/lustre/aoc/users/bsvoboda/faust/faust_alma/data/'
+# The configuration file `CONFIG_FILEN` must be present in the directory
+# where CASA is started from as specified by `PROD_DIR`.
+CONFIG_FILEN = 'faust_imaging.cfg'
+cfg_parser = ConfigParser()
+cfg_parser.read(CONFIG_FILEN)
+DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR')
+PROD_DIR = cfg_parser.get('Paths', 'PROD_DIR')
+# Directories where specific products are read from or written.
 IMAG_DIR = os.path.join(PROD_DIR, 'images/')
 MOMA_DIR = os.path.join(PROD_DIR, 'moments/')
 PLOT_DIR = os.path.join(PROD_DIR, 'plots/')
@@ -200,7 +205,8 @@ class DataSet(object):
         self.target = ALL_TARGETS[field]
         self.setup = setup
         self.kind = kind
-        vis_filen = glob(self.ms_fmt.format(field, setup))
+        ms_glob_pattern = self.ms_fmt.format(field, setup)
+        vis_filen = glob(ms_glob_pattern)
         if kind == 'joint':
             self.vis = vis_filen
         elif kind == '12m':
@@ -216,6 +222,8 @@ class DataSet(object):
             ]
         else:
             raise ValueError('Invalid dataset descriptor: "{0}"'.format(kind))
+        if len(self.vis) == 0:
+            raise IOError('MS files not found with pattern: {0}'.format(ms_glob_pattern))
         self.check_if_product_dirs_exist()
 
     @property

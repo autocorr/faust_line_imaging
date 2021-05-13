@@ -39,20 +39,36 @@ GitHub and file a `pull request
 Paths and directory setup
 -------------------------
 The pipeline script currently requires an explicit directory structure to read
-the measurement sets and write out the images. The following global paths
-are to be set by the user:
+the measurement sets and write out the images. Essential global paths are set
+by the user in the configuration file ``faust_imaging.cfg``. The contents of
+the template file included in the source repository are written below:
 
-.. code-block:: python
+.. code-block:: cfg
 
-   DATA_DIR  # where the measurement sets are stored
-   PROD_DIR  # where CASA will be run and the output products stored
+   # This is the user configuration file for the FAUST archival imaging pipeline.
+   # Edit this file with settings appropriate for your host system and place it in
+   # the directory specified by PROD_DIR.
 
-Edit these paths in ``faust_imaging.py`` for the correct values on your host
-system. Directories in ``PROD_DIR`` will be automatically created to store
-images, moment maps, and plots.
+   [Paths]
+   # Specify where the measurement set files/directories are located. The MSs
+   # for a field should follow the directory structure:
+   #   <DATA_DIR>/<FIELD>-Setup<N>/*.ms
+   # e.g.,
+   #   /scratch/faust/CB68-Setup1/*.ms
+   DATA_DIR=/lustre/aoc/users/USER/FAUST/2018.1.01205.L/completed_SBs/
 
-Visualizing the directory structure as a tree would have files organized as
-such
+   # Specify where CASA is to be run and also the base-path where products
+   # are to be written.
+   PROD_DIR=/lustre/aoc/users/USER/faust/faust_alma/data/
+
+Copy the template ``faust_imaging.cfg`` file from the repository into
+the directory where CASA is to be run from (``PROD_DIR``) and edit
+the paths appropriately for your host system. This file will be read
+when the pipeline script is executed in CASA. Sub-directories for images
+cubes, moments, and plots will be automatically generated.
+
+Visualizing the directory structure as a tree, the file hierarchy would
+be organized:
 
 .. code-block:: none
 
@@ -71,9 +87,9 @@ such
        + ...
      - plots/               <- diagnostic and QA plots
 
-Some CASA tasks do not work with absolute paths, so please note that the
-pipeline script *must* be run from the directory specified by ``PROD_DIR``.
-The measurement set files should be present in the directories:
+Some CASA tasks do not work using absolute paths, so please ensure that the
+pipeline script is run from the directory specified by ``PROD_DIR``.  The
+measurement set files should be present in the directories:
 
 .. code-block:: bash
 
@@ -83,9 +99,10 @@ The measurement set files should be present in the directories:
 
 where ``<TARGET>`` is the FAUST target field name, e.g. "CB68" or "L1527".
 The calibrated measurement sets may be downloaded from RIKEN. The names may be
-found in the ``ALL_TARGETS`` dictionary, I retrieved these values from the
-proposal, so they may be inconsistent for some targets. The paths above may
-modified directly by editing the format string attribute ``DataSet.ms_fmt``.
+found in the ``ALL_TARGET_NAMES`` global variable, I retrieved these values
+from the proposal, so they may be inconsistent for some targets. The paths
+above may modified directly by editing the format string attribute
+``DataSet.ms_fmt``.
 
 
 Executing the script
