@@ -23,8 +23,8 @@ In this example:
 # `faust_imaging.py`.
 execfile('../casa_scripts/faust_imaging.py')
 if os.getenv('USING_SHARED_MEM') == 'true':
-    DATA_DIR = '/dev/shm/'  # mutating definition from `faust_imaging.py`
-    os.chdir('/dev/shm')
+    DATA_DIR = os.getenv('SHM_DIR')  # mutating definition from `faust_imaging.py`
+    os.chdir(DATA_DIR)
     if not os.path.exists('images'):
         os.symlink(IMAG_DIR, 'images')
         os.symlink(PLOT_DIR, 'plots')

@@ -42,10 +42,10 @@ export NBATCHES=8
 export USING_SHARED_MEM=false
 if [ $USING_SHARED_MEM = true ] ; then
     export SHM_DIR=/dev/shm/faust_pipeline
-    DATA_DIR=/lustre/aoc/users/cchandle/FAUST/2018.1.01205.L/completed_SBs
+    DATA_DIR=/lustre/aoc/users/USER/FAUST/2018.1.01205.L/completed_SBs
     VIS_DATA=$DATA_DIR/CB68-Setup1-mosaic
     SHM_DATA=$SHM_DIR/CB68-Setup1
-    if [ ! -d $SHM_DATA ] ; then
+    if [[ ! -d $SHM_DATA ]] ; then
         cp -r $VIS_DATA $SHM_DATA
     fi
 fi
@@ -67,11 +67,15 @@ wait
 run_casa "execfile('$SCRIPTNAME'); _postprocess()" >& casa_imaging_${PBS_JOBNAME}_postprocess.out
 
 
-# Clean up the temporary files stored in memory. This may not be strictly
-# necessary but could cause problems if the files persist.
+# Clean up the temporary files stored in memory and links. This may not be
+# strictly necessary but could cause problems if the files persist.
 if [ $USING_SHARED_MEM = true ] ; then
     rm -rf $SHM_DATA
-    unlink $SHM_DIR/images
+    for PROD_LINK_NAME in images moments plots
+    do
+        LINK_NAME=$SHM_DIR/$PROD_LINK_NAME
+        [[ -L $LINK_NAME ]] && unlink $LINK_NAME
+    done
 fi
 
 
