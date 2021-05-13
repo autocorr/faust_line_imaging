@@ -58,7 +58,10 @@ def _get_config():
     """
     cont_configs = _get_cont_chunks()
     # Create narrow-band SPW configs and merge with the continuum configs
-    narrow_configs = [ImageConfig.from_name(_FIELD, l) for l in _SPW_SET]
+    narrow_configs = [
+            ImageConfig.from_name(_FIELD, label)
+            for label in _SPW_SET if 'cont' not in label
+    ]
     return narrow_configs + list(cont_configs)
 
 
