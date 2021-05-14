@@ -814,7 +814,8 @@ def calc_chunk_freqs(imagebase, nchunks=1):
         chan_per_chunk = np.zeros(nchunks, dtype=int)
         chan_per_chunk[:] = nchan_total // nchunks
         remainder = nchan_total % nchunks
-        chan_per_chunk[-remainder:] += 1
+        if remainder > 0:
+            chan_per_chunk[-remainder:] += 1
         assert chan_per_chunk.sum() == nchan_total
     # Calculate the starting frequencies by iteratively adding the chunk
     # bandwidth to the last starting frequency.
