@@ -60,7 +60,10 @@ def _run_subset(batch_ix):
 
 def _postprocess():
     for field in ALL_FIELD_NAMES:
-        make_all_qa_plots(field, ext=_RUN_EXT, overwrite=True)
-        make_all_moment_maps(field, ext=_RUN_EXT, overwrite=True)
+        config = ImageConfig.from_name(field, _LABEL)
+        imagebase = config.get_imagebase(ext=_RUN_EXT)
+        imagepath = '{0}.image'.format(imagebase)
+        make_qa_plots_from_image(imagepath, overwrite=True)
+        make_moments_from_image(imagepath, overwrite=True)
 
 

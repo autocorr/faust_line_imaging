@@ -76,7 +76,9 @@ def _run_subset(batch_ix):
 def _postprocess():
     full_config, chunked_configs = _get_config()
     chunked_configs.postprocess(ext=_RUN_EXT)
-    make_all_qa_plots(_FIELD, ext=_RUN_EXT, overwrite=True)
-    make_all_moment_maps(_FIELD, ext=_RUN_EXT, overwrite=True)
+    imagebase = full_config.get_imagebase(ext=_RUN_EXT)
+    imagepath = '{0}.image'.format(imagebase)
+    make_qa_plots_from_image(imagepath, overwrite=True)
+    make_moments_from_image(imagepath, overwrite=True)
 
 
