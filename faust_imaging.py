@@ -1933,7 +1933,7 @@ class ChunkedConfigSet(object):
                 common = beam
         assert common is not None
         # Apply fudge factor
-        epsilon = 1.003
+        epsilon = 1.01  # 1%
         common['major']['value'] *= epsilon
         common['minor']['value'] *= epsilon
         return common
