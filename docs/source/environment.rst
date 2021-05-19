@@ -125,6 +125,13 @@ command can also be performed within "recipe" scripts that are themselves run
 with ``execfile`` in CASA.
 
 
+Notes for MacOS users
+---------------------
+MacOS users will likely need to run the command ``ulimit -Sn 8000`` from the
+shell before starting CASA. This command increases the maximum number of files
+that may be opened at once.
+
+
 Next steps
 ----------
 Congratulations! Now that the environment is setup, please now refer to the
