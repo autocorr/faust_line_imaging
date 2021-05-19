@@ -14,8 +14,6 @@ from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
-import scipy as sp
-from skimage import morphology
 from matplotlib import pyplot as plt
 from matplotlib import (patheffects, colors)
 from matplotlib.ticker import AutoMinorLocator
