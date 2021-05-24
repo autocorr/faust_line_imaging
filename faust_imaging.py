@@ -2196,8 +2196,10 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     #    8   maximum intensity
     ia.open(commonname)
     imshape = ia.shape()
+    ra_pix  = imshape[0] - 1
+    dec_pix = imshape[1] - 1
     region = (
-            'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(imshape[0],imshape[1]) +
+            'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(ra_pix, dec_pix) +
             'range=[{0:.3f}km/s,{1:.3f}km/s]'.format(vsys-vwin, vsys+vwin)
     )
     ia.moments(
@@ -2290,7 +2292,8 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
         export_fits(momentname, velocity=True, overwrite=overwrite)
 
 
-def make_all_moment_maps(field, ext='clean', vwin=5, overwrite=True):
+def make_all_moment_maps(field, ext='clean', vwin=5, ignore_chunks=True,
+        overwrite=True):
     """
     Generate all moment maps for images with the matching field ID
     name and extension. Moment maps will be written to the directory
@@ -2306,12 +2309,19 @@ def make_all_moment_maps(field, ext='clean', vwin=5, overwrite=True):
         Velocity window (half-width) to use for estimating moments over
         relative to the systemic velocity.
         **units**: km/s
+    ignore_chunks : bool
+        If 'True' ignore chunk image files.
     overwrite : bool, default True
         Overwrite moment maps files if they exist.
     """
     image_paths = glob('images/{0}/{0}_*_{1}.image'.format(field, ext))
     image_paths.sort()
+    # Typical image file path if chunked:
+    #   images/CB68/CB68_244.936GHz_CS_chunk3_joint_0.5_clean.image
+    pattern = re.compile(r'{0}_.+_.+_chunk[\d]+_'.format(field))
     for path in image_paths:
+        if ignore_chunks and pattern.search(path) is not None:
+            continue
         make_moments_from_image(path, vwin=vwin, overwrite=overwrite)
 
 
