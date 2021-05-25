@@ -31,7 +31,6 @@ import warnings
 from glob import glob
 from copy import deepcopy
 from collections import (OrderedDict, Iterable)
-from ConfigParser import ConfigParser
 
 import numpy as np
 from scipy import special
@@ -46,6 +45,7 @@ from matplotlib import patheffects as path_effects
 if sys.version_info < (3, 0, 0):
     # The script is run under CASA 5.6 Python 2.
     from cleanhelper import cleanhelper
+    from ConfigParser import ConfigParser
 else:
     # The script is run under a users Python v3 installation. This is only used
     # for generating the documentation.
@@ -53,8 +53,13 @@ else:
         is_mpi_enabled = True
         def convert(self, x, y):
             return {'unit': 'null', 'value': 1}
+        def read(self, x):
+            return Mock()
+        def get(self, x, y):
+            return ''
     qa = Mock()
     MPIEnvironment = Mock
+    ConfigParser = Mock
 
 
 # matplotlib configuration settings
