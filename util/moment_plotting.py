@@ -14,6 +14,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
+from skimage import morphology
 from matplotlib import pyplot as plt
 from matplotlib import (patheffects, colors)
 from matplotlib.ticker import AutoMinorLocator
@@ -59,6 +60,7 @@ VELOS = {
         'R_CrA_IRS7B':       6.2,
         'VLA1623A':          4.0,
 }
+TARGETS = list(VELOS.keys())
 
 
 def open_fits(filen, relative=True):
