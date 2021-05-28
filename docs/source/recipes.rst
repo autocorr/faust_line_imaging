@@ -192,7 +192,7 @@ space requirements.
 If the line to be imaged was the primary target of the SPW, then no changes
 need to be made, e.g., Setup 1 C18O J=2-1 near 219.56 GHz. The default
 velocity bandwidth is 20 km/s (+/- 10 km/s about the system velocity) but may
-be set with the attribute :attr:`faust_imaging.ImageConefig.line_vwin`.
+be set with the attribute :attr:`faust_imaging.ImageConfig.line_vwin`.
 
 .. code-block:: python
 
