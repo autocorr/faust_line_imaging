@@ -97,8 +97,6 @@ PBLIMIT = 0.2
 # see values `ALL_TARGETS`). A relatively large value of 10 pix per synthesized
 # HPBW is used for consistency with the continuum images.
 OVERSAMPLE_FACT = 10
-# Line cut-out window in velocity (full width)
-LINE_VWIN = '20km/s'
 # Set of briggs uv-weightings to use by default in pipeline tasks
 WEIGHTINGS = (0.5,)
 # Default extension name for dirty images
@@ -153,9 +151,15 @@ class Target(object):
         self.res = res
         self.vsys = vsys
 
-    @property
-    def vstart(self):
-        half_vwin = qa.div(qa.quantity(LINE_VWIN), 2)
+    def vlsr_from_window(self, velo_width):
+        """
+        Parameters
+        ----------
+        velo_width : str
+            CASA quantity string, e.g. '10km/s'.
+        """
+        assert qa.isquantity(velo_width)
+        half_vwin = qa.div(qa.quantity(velo_width), 2)
         vsys = qa.quantity(self.vsys, 'km/s')
         voffset = qa.sub(vsys, half_vwin)
         return qa.tos(qa.convert(voffset, 'km/s'))
@@ -335,8 +339,6 @@ def ms_contains_diameter(ms_filen, diameter=None, epsilon=0.5):
 
 
 class Spw(object):
-    line_vwin = '20km/s'
-
     def __init__(self, setup, restfreq, mol_name, name, ms_restfreq, spw_id,
             ot_name, nchan, chan_width, tot_bw):
         """
@@ -382,13 +384,6 @@ class Spw(object):
         self.tot_bw = tot_bw
 
     @property
-    def win_chan(self):
-        chan_fwidth = qa.quantity(self.chan_width, 'Hz')
-        chan_vwidth = qa.convertdop(qa.div(chan_fwidth, self.restfreq), 'km/s')
-        nchan = qa.convert(qa.div(LINE_VWIN, chan_vwidth), '')['value']
-        return int(np.ceil(nchan))
-
-    @property
     def short_restfreq(self):
         unit = 'GHz'
         freq = qa.convert(self.restfreq, unit)
@@ -397,6 +392,19 @@ class Spw(object):
     @property
     def label(self):
         return '{0}_{1}'.format(self.short_restfreq, self.mol_name)
+
+    def nchan_from_window(self, velo_width):
+        """
+        Parameters
+        ----------
+        velo_width : str
+            Full velocity width of window. CASA quantity string, e.g. '10km/s'.
+        """
+        assert qa.isquantity(velo_width)
+        chan_fwidth = qa.quantity(self.chan_width, 'Hz')
+        chan_vwidth = qa.convertdop(qa.div(chan_fwidth, self.restfreq), 'km/s')
+        nchan = qa.convert(qa.div(velo_width, chan_vwidth), '')['value']
+        return int(np.ceil(nchan))
 
     def copy(self):
         return deepcopy(self)
@@ -1122,6 +1130,7 @@ class ImageConfig(object):
     cyclefactor = 2.0
     uvtaper = None
     parallel = MPIEnvironment().is_mpi_enabled
+    line_vwin = '20km/s'
 
     def __init__(self, dset, spw, fullcube=True, weighting=0.5, chunk=None):
         """
@@ -1154,6 +1163,8 @@ class ImageConfig(object):
         uvtaper : (list, None)
         parallel : bool
             Is MPI enabled in CASA?
+        line_vwin : str
+            CASA quantity string for velocity window when `fullcube=False`.
         """
         assert dset.setup == spw.setup
         self.dset = dset
@@ -1258,10 +1269,10 @@ class ImageConfig(object):
             return self.chunk.start, self.chunk.nchan
         else:
             # Restrict coverage to range around source velocity.
-            # NOTE This may produce undesirable behaviour if the line rest
-            #      frequency is next to the edge of the SPW.
-            start = self.dset.target.vstart
-            nchan = self.spw.win_chan
+            # NOTE This may produce empty channels if the line rest frequency
+            #      is next to the edge of the SPW.
+            start = self.dset.target.vlsr_from_window(self.line_vwin)
+            nchan = self.spw.nchan_from_window(self.line_vwin)
             return start, nchan
 
     @property
@@ -1317,6 +1328,8 @@ class ImageConfig(object):
             Configuration object encapsulating `ImageConfig` instances with
             properties set for chunking.
         """
+        if not self.fullcube:
+            raise ValueError("Cannot chunk velocity sub-cube made with `fullcube=False`")
         if self.is_chunked:
             raise ValueError("Config is already chunked: {0}".format(self.chunk))
         if nchunks is None:
@@ -1829,9 +1842,10 @@ class ImageConfig(object):
         """
         sigma_kwargs = {'nomask_sigma': nomask_sigma, 'seedmask_sigma':
                 seedmask_sigma, 'clean_sigma': clean_sigma}
-        # If already chunked or explicitly selected to not use chunking, then
-        # do not perform additional chunking and simply run the pipeline tasks.
-        if self.is_chunked or not use_chunking:
+        # If already chunked, using a velocity windowed sub-cube, or explicitly
+        # selected to not use chunking, then do not perform additional chunking
+        # and simply run the pipeline tasks.
+        if self.is_chunked or not self.fullcube or not use_chunking:
             self.run_pipeline_tasks(ext=ext, **sigma_kwargs)
         else:
             chunked_configs = self.duplicate_into_chunks(nchunks=nchunks)

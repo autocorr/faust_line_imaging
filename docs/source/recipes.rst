@@ -192,29 +192,29 @@ space requirements.
 If the line to be imaged was the primary target of the SPW, then no changes
 need to be made, e.g., Setup 1 C18O J=2-1 near 219.56 GHz. The default
 velocity bandwidth is 20 km/s (+/- 10 km/s about the system velocity) but may
-be set with the global parameter ``LINE_VWIN`` parameter.
+be set with the attribute :attr:`faust_imaging.ImageConefig.line_vwin`.
 
 .. code-block:: python
 
-   LINE_VWIN = '5km/s'
    config = ImageConfig.from_name(..., fullcube=False)
+   # Set the window for +/- 2.5 km/s (full-width of 5 km/s) centered on the
+   # system velocity.
+   config.line_vwin = '5km/s'
    config.run_pipeline()
 
-The primary target of the SPW can be determined by comparing the value of
-``spw.mol_name`` (primary molecule) to ``spw.name`` (full SPW name with
-transitions from the correlator configuration).
+The primary transition targeted by the SPW can be determined by comparing the
+value of ``spw.mol_name`` (primary molecule) to ``spw.name`` (full SPW name
+with transitions from the correlator configuration).
 
-Imaging cut-outs that were not the primary targets of an SPW requires creating
-new instances of the classes :class:`faust_imaging.Spw` and
-:class:`faust_imaging.DataSet` in order to instantiate ``ImageConfig``
-directly. This can be particularly useful for the continuum windows which
-are resource intensive to process with full bandwidth cubes.
+Imaging cut-outs that were not the primary transitions targeted by an SPW
+requires creating new instances of the classes :class:`faust_imaging.Spw` and
+:class:`faust_imaging.DataSet`. An instance of ``ImageConfig`` then must be
+created directly. This can be particularly useful for the continuum windows
+which are resource intensive to process with full bandwidth cubes.
 
 .. code-block:: python
 
    dset = DataSet('CB68', kind='joint')
-   # define a 5km/s window for +/- 2.5 km/s about the system velocity
-   LINE_VWIN = '5km/s'
    # We wish to image the acetaldehyde CH3CHO 11(1,10)-10(1,9) transition
    # also found in the Setup 1 SPW ID 27. The primary targeted line was
    # deuterated ammonia NH2D 3(2,2)s-3(2,1)a. Create a copy of this window
@@ -222,10 +222,11 @@ are resource intensive to process with full bandwidth cubes.
    # rest frequency of the new transition.
    spw = ALL_SPWS['216.563GHz_NH2D'].copy()
    spw.mol_name = 'CH3CHO'
-   spw.restfreq = '216.58193040GHz'  # SLAIM
+   spw.restfreq = '216.58193040GHz'  # from SLAIM
    # Initialize the `ImageConfig` class directly from the instances and
    # run the pipeline.
    config = ImageConfig(dset, spw, fullcube=False)
+   config.line_vwin = '5km/s'  # default 20 km/s
    config.run_pipeline(ext='5kms_clean')
    # The final image products will be named as:
    #   CB68_216.582GHz_CH3CHO_joint_0.5_5kms_clean.*
