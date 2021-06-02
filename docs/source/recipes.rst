@@ -232,6 +232,25 @@ which are resource intensive to process with full bandwidth cubes.
    #   CB68_216.582GHz_CH3CHO_joint_0.5_5kms_clean.*
 
 
+Modifying multi-scale parameters
+--------------------------------
+To adjust the default parameters used by multi-scale CLEAN in the pipeline,
+modify the attributes listed in the example below:
+
+.. code-block:: python
+
+   config = ImageConfig.from_name('CB68', '244.936GHz_CS')
+   # The default scales, in pixels, are (0, 15, 45, 135) corresponding to
+   # approximately 0, 0.45, 1.35, 4.05 arcsec for a typical HPBW of 0.3as
+   # and an over-sampling factor of 10 (cell size of 0.03as). Here, we
+   # replace the 45 pixel scale with two new scales: 30 and 60 pixels.
+   config.scales = [0, 15, 30, 60, 135]  # pix
+   # We also increase the small-scale bias parameter from the pipeline
+   # default of -1.0 to -0.5.
+   config.smallscalebias = -0.5
+   config.run_pipeline()
+
+
 .. _Restarting:
 
 Restarting ``tclean`` and manual masking
