@@ -215,7 +215,7 @@ class DataSet(object):
         self.setup = setup
         self.kind = kind
         ms_glob_pattern = self.ms_fmt.format(field, setup)
-        vis_filen = glob(ms_glob_pattern)
+        vis_filen = sorted(glob(ms_glob_pattern))
         if kind == 'joint':
             self.vis = vis_filen
         elif kind == '12m':
