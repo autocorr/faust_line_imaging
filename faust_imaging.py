@@ -1508,7 +1508,7 @@ class ImageConfig(object):
         # When imaging the full cube without chunking, image the full spectral
         # coverage over all array configurations (nchan=-1) but use the
         # pre-computed range when imaging a chunk.
-        if self.is_chunked:
+        if self.is_chunked or not self.fullcube:
             start, nchan = self.selected_start_nchan
         else:
             start = None
@@ -2524,8 +2524,8 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
 
     outfilen : str
     """
-    log_post(':: Making QA plots for: {0}'.format(cset.stem))
-    # configuration options specific to image or residual plots
+    log_post(':: Making QA plots for: {0} ({1})'.format(cset.stem, kind))
+    # Configuration options specific to image or residual plots
     if kind == 'image':
         cmap = plt.cm.afmhot
         mask_cont_color = 'cyan'
@@ -2536,54 +2536,73 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
         vmin, vmax = -5 * cset.rms, 5 * cset.rms
     else:
         raise ValueError('Invalid plot kind: "{0}"'.format(kind))
-    # plot configuration options
-    ncols = 5
-    subplot_size = 1.3  # inch, good for five across on a 8.5x11 page
-    # set NaN color for colormap, '0.2' for darker gray
+    # Set NaN color for colormap, '0.2' for darker gray
     cmap.set_bad('0.5', 1.0)
-    # determine the number of channels that need to be plotted
-    nrows = cset.ngood // ncols + 1
-    nempty = ncols - cset.ngood % ncols
+    # Plot configuration options
+    ncols = 5
+    subplot_size = 1.3  # inch; good for five across on a 8.5x11 page
+    max_rows_per_page = 14  # m*n -> 70 plot per page
+    max_plots_per_page = ncols * max_rows_per_page
     tick_pos = cset.calc_tick_loc(ang_tick=5)
-    figsize = (ncols * subplot_size, nrows * subplot_size)
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex=True,
-            sharey=True, figsize=figsize, dpi=300)
-    for ax, (planes, chan_ix) in zip(axes.flat, cset.iter_planes()):
-        image, residual, mask, pbeam = planes
-        data = image if kind == 'image' else residual
-        # Show colorscale of image data
-        ax.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
-        # Show HPBW contour for primary beam data
-        ax.contour(pbeam, levels=[0.5], colors='0.5',
-                linestyles='dashed', linewidths=0.4)
-        # Show contours for high-SNR emission
-        if kind == 'image':
-            high_snr_levels = list(cset.rms * np.array([10, 20, 40, 80]))
-            ax.contourf(data, levels=high_snr_levels, cmap=plt.cm.rainbow)
-        # Show contour for the clean mask
-        if mask.any():
-            ax.contour(mask, level=[0.5], colors=mask_cont_color,
-                    linestyles='solid', linewidths=0.2)
-        # show nice channel label in the top-right corner
-        text = ax.annotate(str(chan_ix), (0.83, 0.91),
-                xycoords='axes fraction', fontsize='xx-small')
-        text.set_path_effects([
-                path_effects.withStroke(linewidth=2, foreground='white')])
-        # show axis ticks as relative offsets in fixed arcsec interval
-        ax.set_xticks(tick_pos)
-        ax.set_yticks(tick_pos)
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        del image, residual, mask, pbeam
-    # zoom the window to crop out some of the PB NaNs around the edges
-    ax.set_xlim(0.12*cset.pix_width, 0.88*cset.pix_width)
-    ax.set_ylim(0.12*cset.pix_width, 0.88*cset.pix_width)
-    plt.tight_layout(pad=0.8)
-    # Hide unused plots
-    for ax in axes.flat[-nempty:]:
-        ax.set_visible(False)
-    outfilen_ext = '{0}_{1}'.format(outfilen, kind)
-    savefig(outfilen_ext)
+    # Determine the number of channels that need to be plotted
+    iter_planes = cset.iter_planes()
+    n_full_pages = cset.ngood // max_plots_per_page
+    n_mod_pages = cset.ngood % max_plots_per_page
+    n_pages = cset.ngood // max_plots_per_page + 1
+    plots_per_page = n_full_pages * [max_plots_per_page] + [n_mod_pages]
+    # get pages per plot
+    for i_page, n_plots  in enumerate(plots_per_page):
+        nempty = n_plots % ncols
+        nrows = n_plots // ncols + (1 if nempty > 0 else 0)
+        figsize = (ncols * subplot_size, nrows * subplot_size)
+        fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex=True,
+                sharey=True, figsize=figsize, dpi=300)
+        for j_plot in range(n_plots):
+            try:
+                planes, chan_ix = next(iter_planes)
+            except StopIteration:
+                break
+            ax = axes.flat[j_plot]
+            image, residual, mask, pbeam = planes
+            data = image if kind == 'image' else residual
+            # Show colorscale of image data
+            ax.imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+            # Show HPBW contour for primary beam data
+            ax.contour(pbeam, levels=[0.5], colors='0.5',
+                    linestyles='dashed', linewidths=0.4)
+            # Show contours for high-SNR emission
+            if kind == 'image':
+                high_snr_levels = list(cset.rms * np.array([10, 20, 40, 80]))
+                ax.contourf(data, levels=high_snr_levels, cmap=plt.cm.rainbow)
+            # Show contour for the clean mask
+            if mask.any():
+                ax.contour(mask, level=[0.5], colors=mask_cont_color,
+                        linestyles='solid', linewidths=0.2)
+            # show nice channel label in the top-right corner
+            text = ax.annotate(str(chan_ix), (0.83, 0.91),
+                    xycoords='axes fraction', fontsize='xx-small')
+            text.set_path_effects([
+                    path_effects.withStroke(linewidth=2, foreground='white')])
+            # show axis ticks as relative offsets in fixed arcsec interval
+            ax.set_xticks(tick_pos)
+            ax.set_yticks(tick_pos)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            del image, residual, mask, pbeam
+        # zoom the window to crop out some of the PB NaNs around the edges
+        ax.set_xlim(0.12*cset.pix_width, 0.88*cset.pix_width)
+        ax.set_ylim(0.12*cset.pix_width, 0.88*cset.pix_width)
+        plt.tight_layout(pad=0.8)
+        # Hide unused plots
+        if nempty > 0:
+            for ax in axes.flat[-nempty:]:
+                ax.set_visible(False)
+        # Only use paginated file names if multiple pages are used
+        if n_pages == 1:
+            outfilen_ext = '{0}_{1}'.format(outfilen, kind)
+        else:
+            outfilen_ext = '{0}_{1}_page{2}'.format(outfilen, kind, i_page+1)
+        savefig(outfilen_ext)
 
 
 def make_qa_plots_from_image(path, plot_sigma=None, overwrite=True):
@@ -2605,9 +2624,13 @@ def make_qa_plots_from_image(path, plot_sigma=None, overwrite=True):
     # and skip plotting if it exists.
     stem = os.path.splitext(path)[0]
     basename = os.path.basename(stem)
-    pdf_path = '{0}{1}_qa_plot_image.pdf'.format(PLOT_DIR, basename)
-    if not overwrite and os.path.exists(pdf_path):
-        log_post('-- File exists, passing: {0}'.format(pdf_path))
+    file_stem = '{0}{1}_qa_plot_image'.format(PLOT_DIR, basename)
+    file_exists = (
+            os.path.exists(file_stem + '.pdf') or
+            os.path.exists(file_stem + '_page1.pdf')
+    )
+    if not overwrite and file_exists:
+        log_post('-- File exists, passing for {0}'.format(file_stem))
         return
     # Read in cube data and make plots
     if plot_sigma is None:
