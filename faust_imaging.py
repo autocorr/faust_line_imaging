@@ -2540,12 +2540,16 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     max_rows_per_page = 14  # m*n -> 70 plot per page
     max_plots_per_page = ncols * max_rows_per_page
     tick_pos = cset.calc_tick_loc(ang_tick=5)
-    # Determine the number of channels that need to be plotted
+    # Determine the number of pages that need to be created from the
+    # required number of channels to plot.
+    if cset.ngood <= max_plots_per_page:
+        plots_per_page = [cset.ngood]
+    else:
+        n_full_pages = cset.ngood // max_plots_per_page
+        n_mod_plots = cset.ngood % max_plots_per_page
+        plots_per_page = n_full_pages * [max_plots_per_page] + [n_mod_plots]
+    n_pages = len(plots_per_page)
     iter_planes = cset.iter_planes()
-    n_full_pages = cset.ngood // max_plots_per_page
-    n_mod_pages = cset.ngood % max_plots_per_page
-    n_pages = cset.ngood // max_plots_per_page + 1
-    plots_per_page = n_full_pages * [max_plots_per_page] + [n_mod_pages]
     # get pages per plot
     for i_page, n_plots  in enumerate(plots_per_page):
         nempty = n_plots % ncols
