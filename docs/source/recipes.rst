@@ -533,7 +533,6 @@ chunk(s).
    # The chunk indices are also reflected in the image file names ("_chunk2_").
    # Here we retrieve the configuration containing the desired channel index:
    config_with_issues = chunked_configs.get_chunk_from_channel(255)
-   chunk_index = config_with_issues.chunk.index  # -> 2
 
    # Clean the line interactively, restarting using the model and mask on disk.
    config_with_issues.clean_line(ext='clean', interactive=True, restart=True,
@@ -541,9 +540,36 @@ chunk(s).
 
    # Remake the products for chunk2, but use the existing products from the
    # other chunks. Concatenate all results together into new final cubes.
+   chunk_index = config_with_issues.chunk.index
    chunked_configs.postprocess(ext='clean', use_existing_except=[chunk_index])
    # Alternatively, just re-make everything.
    #chunked_configs.postprocess(ext='clean')
+
+The QA plots and final concatenated image products will report channel indices
+for the full cube and these differ from the channel indices of the chunks (as
+they start again from 0). To inspect or retrieve the corresponding channel
+indices from the full cube, one can access the :class:`faust_imaging.ChunkConfig`
+class instance :attr:`faust_imaging.ImageConfig.chunk` to convert between
+channels of the full cube and channels of the chunk.
+
+.. code:: python
+
+   # Continuing from the previous example but renaming for brevity's sake:
+   config = config_with_issues
+
+   # For reference, print the chunk index number:
+   print(config.chunk.index)  # -> 2
+
+   # The channel index of interest is 255 in the full cube and corresponds
+   # to channel 17 in chunk 2. Note that these values are indexed from zero.
+   # One can calculate these values using the following methods:
+   print(config.chunk.convert_full_chan_to_chunk(255))  # -> 17
+   # Or do the reverse
+   print(config.chunk.convert_chunk_chan_to_full(17))   # -> 255
+
+   # A full list of which channels in the full cube the chunk channels
+   # correspond to can be found in:
+   print(config.chunk.fullcube_chan_indices)  # -> [238, 239, ..., 356]
 
 
 .. _Parallel CASA:
