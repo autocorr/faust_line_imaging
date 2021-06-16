@@ -1142,10 +1142,22 @@ class ChunkConfig(object):
         Parameters
         ----------
         ix : int
-            The channel index of the chunked image cube.
+            Channel index of the chunked image cube.
         """
         assert ix < self.nchan
         return self.fullcube_chan_indices[ix]
+
+    def convert_full_chan_to_chunk(self, ix):
+        """
+        Parameters
+        ----------
+        ix : int
+            Channel index of the full image cube.
+        """
+        if ix not in self.fullcube_chan_indices:
+            raise ValueError('Channel index from full cube "{0}" not in chunk.'.format(ix))
+        chans = np.array(self.fullcube_chan_indices)
+        return np.argwhere(chans == ix)[0][0]
 
 
 class ImageConfig(object):
