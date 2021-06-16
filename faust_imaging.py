@@ -1105,18 +1105,47 @@ def check_max_residual(imagebase, sigma=5.5):
 ###############################################################################
 
 class ChunkConfig(object):
-    def __init__(self, start, nchan, index):
+    def __init__(self, start, start_chan_ix, nchan, index):
         """
         Parameters
         ----------
         start : str
+            CASA quantity string for the LSR frequency of the first channel
+            of the chunk.
+        start_chan_ix : int
+            Channel index of the starting channel in the full cube.
         nchan : int
+            Number of channels in the chunk.
         index : int
+            Chunk index number, used as part of the file names: "_chunk0".
+
+        Attributes
+        ----------
+        fullcube_chan_indices : [int], None
+            Indices of the chunk channels in the full cube.
         """
         assert qa.isquantity(start)
+        assert nchan > 0
+        assert start_chan_ix >= 0
+        assert index >= 0
         self.start = start
+        self.start_chan_ix = start_chan_ix
         self.nchan = nchan
         self.index = int(index)
+        self.fullcube_chan_indices = [
+                start_chan_ix + i
+                for i in range(nchan)
+        ]
+
+    def convert_chunk_chan_to_full(self, ix):
+        """
+        Parameters
+        ----------
+        ix : int
+            The channel index of the chunked image cube.
+        """
+        assert ix < self.nchan
+        return self.fullcube_chan_indices[ix]
 
 
 class ImageConfig(object):
@@ -1356,16 +1385,18 @@ class ImageConfig(object):
             imagebase = self.tinyimg_imagebase
         # Create chunk configuration instances from the file-path to the image
         # products including the ".sumwt" file.
-        chunks = [
-                ChunkConfig(start, nchan, i)
-                for i, (start, nchan) in enumerate(calc_chunk_freqs(
-                    imagebase, nchunks=nchunks))
-        ]
-        chunked_configs = []
+        chunks = []
+        start_chan_ix = 0
+        chunk_freqs = calc_chunk_freqs(imagebase, nchunks=nchunks)
+        for i, (start, nchan) in enumerate(chunk_freqs):
+            chunk = ChunkConfig(start, start_chan_ix, nchan, i)
+            start_chan_ix += nchan
+            chunks.append(chunk)
         # Copy and mutate the existing instance into modified chunked versions.
         # NOTE If a more sophisticated configuration is ever added to the
         #      initialization, then this simple over-writing of the attributes
         #      may leave instances improperly initialized.
+        chunked_configs = []
         for chunk in chunks:
             log_post('-- Chunk start frequency: ({0}, {1})'.format(chunk.index, chunk.start))
             config = deepcopy(self)
