@@ -1443,7 +1443,7 @@ class ImageConfig(object):
         else:
             return '{0}_{1}'.format(stem, ext)
 
-    def cleanup(self, imagename):
+    def mpicasa_cleanup(self, imagename):
         """
         Delete the ".workdirectory" folders that are occassionally generated
         and not removed in mpicasa. Also concatenate all image products into
@@ -1453,7 +1453,7 @@ class ImageConfig(object):
         if self.parallel:
             concat_parallel_all_extensions(imagename)
 
-    def remove_all_files(self, confirm=True):
+    def remove_all_files(self, confirm=True, remove_chunks=True):
         """
         Attempt to safely remove all files matching the image basename
         returned by :meth:`faust_imaging.ImageConfig.get_imagebase`.
@@ -1461,7 +1461,8 @@ class ImageConfig(object):
         Parameters
         ----------
         confirm : bool
-            Require confirmation before removing files.
+            Print the files to be removed to STDOUT and require keyboard
+            confirmation before removing files.
         """
         imagebase = self.get_imagebase()
         matched_files = glob('{0}*'.format(imagebase))
@@ -1523,7 +1524,8 @@ class ImageConfig(object):
             interactive=False,
             parallel=self.parallel,
         )
-        self.cleanup(imagename)
+        self.mpicasa_cleanup(imagename)
+        delete_all_extensions(imagename, keep_exts=['sumwt'])
         # Validate that the sumwt file contains useful data. If tclean fails to
         # create the PSF then the sumwt file will contain all zeros.
         sumwt_filen = '{0}.sumwt'.format(imagename)
@@ -1582,7 +1584,8 @@ class ImageConfig(object):
             interactive=False,
             parallel=self.parallel,
         )
-        self.cleanup(imagename)
+        self.mpicasa_cleanup(imagename)
+        delete_all_extensions(imagename, keep_exts=['sumwt', 'image'])
 
     def clean_line_nomask(self, sigma=4.5, scale_upper_limit=60):
         """
@@ -1646,7 +1649,8 @@ class ImageConfig(object):
             # no masking parameters applied
             usemask='user',
         )
-        self.cleanup(imagename)
+        self.mpicasa_cleanup(imagename)
+        delete_all_extensions(imagename, keep_exts=['image', 'pb'])
 
     def make_seed_mask(self, sigma=5.0):
         """
@@ -1782,7 +1786,7 @@ class ImageConfig(object):
             # mask parameters
             **mask_kwargs
         )
-        self.cleanup(imagename)
+        self.mpicasa_cleanup(imagename)
 
     def clean_line_interactive_restart(self, **kwargs):
         self.clean_line(restart=True, interactive=True, **kwargs)
@@ -1927,6 +1931,10 @@ class ChunkedConfigSet(object):
         assert '_chunk0' in first_config.dirty_imagebase
         imagebase = first_config.get_imagebase(ext=ext).replace('_chunk0', '')
         return imagebase
+
+    def remove_all_files(self, confirm=True):
+        for config in self:
+            config.remove_all_files(confirm=confirm)
 
     def get_chunk_from_channel(self, ix):
         """

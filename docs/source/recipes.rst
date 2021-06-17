@@ -179,6 +179,25 @@ For developing custom plotting routines, the :class:`faust_imaging.CubeSet`
 class may be of use.
 
 
+Cleaning up and removing files
+------------------------------
+The pipeline produces a large number of intermediate image products. These
+products can be kept in order to restart unsatisfactory imaging results
+or removed if the final products are suitable.
+
+.. code-block:: python
+
+   config = ImageConfig.from_name('CB68', '244.936GHz_CS', weighting='natural',
+                kind='12m')
+
+   # The helper method ".remove_all_files()" will identify all files/images with
+   # names matching the configuration file stem, in this example:
+   #    images/CB68/CB68_244.936GHz_CS_12m_natural*
+   # but not others runs imaged with joint 12/7m data or other uv-weightings.
+   print(config.get_imagebase())
+   config.remove_all_files()
+
+
 .. _Imaging cut-out velocity windows:
 
 Imaging cut-out velocity windows
