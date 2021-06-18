@@ -197,6 +197,19 @@ or removed if the final products are suitable.
    print(config.get_imagebase())
    config.remove_all_files()
 
+Intermediate image products that are unnecessary for the functioning of the
+pipeline or restarting image processes are removed during the run. If you
+wish to preserve these image products, such as for example the ``.model``
+image to the un-masked clean run, then all intermediate products can be kept by
+setting the
+:attr:`faust_imaging.ImageConfig.preserve_all_intermediate_products` attribute:
+
+.. code-block:: python
+
+   config = ImageConfig.from_name(...)
+   config.preserve_all_intermediate_products = True
+   config.run_pipeline()
+
 
 .. _Imaging cut-out velocity windows:
 

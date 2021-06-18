@@ -1166,6 +1166,7 @@ class ImageConfig(object):
     _autom_kwargs = AUTOM_KWARGS
     _autom_7m_kwargs = AUTOM_7M_KWARGS
     _rms = None
+    preserve_all_intermediate_products = False
     smallscalebias = -1.0
     gain = 0.05
     cyclefactor = 2.0
@@ -1585,7 +1586,8 @@ class ImageConfig(object):
             parallel=self.parallel,
         )
         self.mpicasa_cleanup(imagename)
-        delete_all_extensions(imagename, keep_exts=['sumwt', 'image'])
+        if not self.preserve_all_intermediate_products:
+            delete_all_extensions(imagename, keep_exts=['sumwt', 'image'])
 
     def clean_line_nomask(self, sigma=4.5, scale_upper_limit=60):
         """
@@ -1650,7 +1652,8 @@ class ImageConfig(object):
             usemask='user',
         )
         self.mpicasa_cleanup(imagename)
-        delete_all_extensions(imagename, keep_exts=['image', 'pb'])
+        if not self.preserve_all_intermediate_products:
+            delete_all_extensions(imagename, keep_exts=['image', 'pb'])
 
     def make_seed_mask(self, sigma=5.0):
         """
