@@ -37,29 +37,48 @@ from scipy import special
 from matplotlib import pyplot as plt
 from matplotlib import patheffects as path_effects
 
-# This script is meant to be run under Python v2.7 in CASA v5.6. However,
-# the documentation is generated using Sphinx and Python v3. In order for this
-# script to execute its module level scope without crashing, a few global tasks
-# in CASA must be mocked. Full CASA v5/v6 compatibility could be implemented if
-# the user has CASA v6 installed with modules `casatasks` and `casatools`.
-if sys.version_info < (3, 0, 0):
-    # The script is run under CASA 5.6 Python 2.
-    from cleanhelper import cleanhelper
-    from ConfigParser import ConfigParser
+# Python version information and v2/v3 specific imports.
+is_python3 = sys.version_info >= (3, 0, 0)
+if is_python3:
+    from configparser import ConfigParser
 else:
-    # The script is run under a users Python v3 installation. This is only used
-    # for generating the documentation.
-    class Mock:
-        is_mpi_enabled = True
-        def convert(self, x, y):
-            return {'unit': 'null', 'value': 1}
-        def read(self, x):
-            return Mock()
-        def get(self, x, y):
-            return ''
-    qa = Mock()
-    MPIEnvironment = Mock
-    ConfigParser = Mock
+    from ConfigParser import ConfigParser
+
+# Test whether the process is running from within a CASA environment.
+try:
+    casalog.version
+    is_running_within_casa = True
+except NameError:
+    is_running_within_casa = False
+
+# The pipeline script currently supports being run under Python v2 and v3 under
+# the CASA v5 and v6 branches, respectively. It may also be run under a user's
+# system Python installation if the modules `casatasks` and `casatools` are
+# installed (Python v3 only).
+if is_running_within_casa and is_python3:
+    # The script is run under CASA 6 and Python 3. Rename task and tool names
+    # to follow the CASA 5 API.
+    # FIXME need cleanhelper
+    pass
+elif is_running_within_casa and not is_python3:
+    # The script is run under CASA 5 and Python 2.
+    from cleanhelper import cleanhelper
+elif not is_running_within_casa and is_python3:
+    # The script is run under the user's system Python installation using
+    # Python 3. Use the CASA 5 API conventions.
+    from casatasks import (
+            MPIEnvironment, casalog, exportfits, imhead, immath, impbcor,
+            imsmooth, imsmooth, imstat, makemask, rmtables, tclean,
+    )
+    from casatasks.private.cleanhelper import cleanhelper
+    from casatools import image as ia
+    from casatools import quanta as qa
+    from casatools import coordsys as csys
+    from casatools import msmetadata as msmd
+elif not is_running_within_casa and not is_python3:
+    raise RuntimeError('Python v2 non-CASA environments are not supported.')
+else:
+    raise RuntimeError('Invalid environment.')
 
 
 # matplotlib configuration settings
@@ -2737,6 +2756,7 @@ def make_all_qa_plots(field, ext='clean', ignore_chunks=True, overwrite=True):
 if __name__ == '__main__':
     # NOTE statements placed in this block will be executed on `execfile` in
     #      addition to when called by qsub for batch jobs.
-    pass
+    # Print log-name to STDOUT and the log-file.
+    log_post('CASA log-file: {0}'.format(casalog.logfile()))
 
 
