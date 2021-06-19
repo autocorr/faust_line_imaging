@@ -96,7 +96,10 @@ plt.ioff()  # turn off interactive GUI
 # where CASA is started from as specified by `PROD_DIR`.
 CONFIG_FILEN = 'faust_imaging.cfg'
 cfg_parser = ConfigParser()
-cfg_parser.read(CONFIG_FILEN)
+if not cfg_parser.read(CONFIG_FILEN):
+    # When running the script in Sphinx to create the documentation, the
+    # config file will be in the above directory (cwd "docs/").
+    cfg_parser.read(os.path.join('..', CONFIG_FILEN))
 DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR')
 PROD_DIR = cfg_parser.get('Paths', 'PROD_DIR')
 # Directories where specific products are read from or written.
