@@ -58,8 +58,7 @@ except NameError:
 if is_running_within_casa and is_python3:
     # The script is run under CASA 6 and Python 3. Rename task and tool names
     # to follow the CASA 5 API.
-    # FIXME need cleanhelper
-    pass
+    from casatasks.private.cleanhelper import cleanhelper
 elif is_running_within_casa and not is_python3:
     # The script is run under CASA 5 and Python 2.
     from cleanhelper import cleanhelper
@@ -71,10 +70,14 @@ elif not is_running_within_casa and is_python3:
             imsmooth, imsmooth, imstat, makemask, rmtables, tclean,
     )
     from casatasks.private.cleanhelper import cleanhelper
-    from casatools import image as ia
-    from casatools import quanta as qa
-    from casatools import coordsys as csys
-    from casatools import msmetadata as msmd
+    from casatools import image
+    from casatools import quanta
+    from casatools import coordsys
+    from casatools import msmetadata
+    ia = image()
+    qa = quanta()
+    csys = coordsys()
+    msmd = msmetadata()
 elif not is_running_within_casa and not is_python3:
     raise RuntimeError('Python v2 non-CASA environments are not supported.')
 else:
@@ -202,7 +205,7 @@ ALL_TARGETS = { t.name: t for t in [
         Target('R_CrA_IRS7B',       0.37, 6.2),
         Target('VLA1623A',          0.36, 4.0),
 ]}
-ALL_FIELD_NAMES = ALL_TARGETS.keys()
+ALL_FIELD_NAMES = list(ALL_TARGETS.keys())
 
 
 class DataSet(object):
@@ -549,7 +552,7 @@ ALL_SPWS = {}
 ALL_SPWS.update(SPW_S1)
 ALL_SPWS.update(SPW_S2)
 ALL_SPWS.update(SPW_S3)
-ALL_SPW_LABELS = ALL_SPWS.keys()
+ALL_SPW_LABELS = list(ALL_SPWS.keys())
 
 
 ###############################################################################
@@ -2197,7 +2200,7 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
     if label is not None:
         spw_list = [ALL_SPWS[label]]
     else:
-        spw_list = ALL_SPWS.values()
+        spw_list = list(ALL_SPWS.values())
     for spw in spw_list:
         # setup new config instance and calculate frequencies
         dset = DataSet(field, setup=spw.setup, kind=kind)
