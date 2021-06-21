@@ -8,7 +8,7 @@ the script.
 
 
 CASA compatibility
------------------
+------------------
 The pipeline script can be used with the "monolithic" versions of CASA v5 (Python 2) or
 CASA v6 (Python 3). These are the versions of CASA downloaded from the main website.
 The pipeline has been primarily tested under CASA v5.6 (the current Calibration

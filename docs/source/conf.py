@@ -12,14 +12,8 @@
 #
 import os
 import sys
-import subprocess
 # script is executed from <ROOT>/docs/source
 sys.path.insert(0, os.path.abspath('../../'))
-
-# Update measures for casatasks/casatools from latest online data
-read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
-if read_the_docs_build:
-    subprocess.call('python3 -m casatools --update-user-data', shell=True)
 
 
 # -- Project information -----------------------------------------------------
