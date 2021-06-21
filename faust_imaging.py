@@ -58,16 +58,20 @@ except NameError:
 if is_running_within_casa and is_python3:
     # The script is run under CASA 6 and Python 3. Rename task and tool names
     # to follow the CASA 5 API.
+    from casatasks import MPIEnvironment
     from casatasks.private.cleanhelper import cleanhelper
+    IS_MPI = MPIEnvironment.is_mpi_enabled
 elif is_running_within_casa and not is_python3:
     # The script is run under CASA 5 and Python 2.
     from cleanhelper import cleanhelper
+    IS_MPI = MPIEnvironment.is_mpi_enabled
 elif not is_running_within_casa and is_python3:
     # The script is run under the user's system Python installation using
     # Python 3. Use the CASA 5 API conventions.
     from casatasks import (
-            MPIEnvironment, casalog, exportfits, imhead, immath, impbcor,
+            casalog, exportfits, imhead, immath, impbcor,
             imsmooth, imsmooth, imstat, makemask, rmtables, tclean,
+            mpi_env_found,
     )
     from casatasks.private.cleanhelper import cleanhelper
     from casatools import image
@@ -75,9 +79,11 @@ elif not is_running_within_casa and is_python3:
     from casatools import coordsys
     from casatools import msmetadata
     ia = image()
+    im = image()
     qa = quanta()
     csys = coordsys()
     msmd = msmetadata()
+    IS_MPI = mpi_env_found
 elif not is_running_within_casa and not is_python3:
     raise RuntimeError('Python v2 non-CASA environments are not supported.')
 else:
@@ -1196,7 +1202,7 @@ class ImageConfig(object):
     gain = 0.05
     cyclefactor = 2.0
     uvtaper = None
-    parallel = MPIEnvironment().is_mpi_enabled
+    parallel = IS_MPI
     line_vwin = '20km/s'
 
     def __init__(self, dset, spw, fullcube=True, weighting=0.5, chunk=None):
@@ -1819,7 +1825,7 @@ class ImageConfig(object):
     def clean_line_interactive_restart(self, **kwargs):
         self.clean_line(restart=True, interactive=True, **kwargs)
 
-    def postprocess(self, ext=None, make_fits=True, make_hanning=True,
+    def postprocess(self, ext=None, make_fits=True, make_hanning=False,
             beam=None):
         """
         Post-process image products. The maximum residual is logged to the
@@ -2237,7 +2243,7 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 ###############################################################################
 
 def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
-        overwrite=True):
+        remove_hanning=True, overwrite=True):
     """
     Create moment maps for the given image. The cube is masked using the
     associated clean mask.
@@ -2254,6 +2260,8 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
         Velocity window (half-width) to use for estimating moments over
         relative to the systemic velocity.
         **units**: km/s
+    remove_hanning : bool, default True
+        Delete the hanning-smoothed cube after use.
     overwrite : bool
     """
     if not os.path.exists(MOMA_DIR):
@@ -2263,7 +2271,7 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     pbname = '{0}.pb'.format(stem)
     maskname = '{0}.mask'.format(stem)
     commonname = '{0}.image.common'.format(stem)
-    hannname = '{0}.image.common.hanning'.format(stem)
+    hann_name = '{0}.image.common.hanning'.format(stem)
     basename = os.path.basename(stem)
     outfile = os.path.join(MOMA_DIR, basename)
     # The `ia.moments` task must smooth to a common resolution before
@@ -2275,8 +2283,8 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
         smooth_cube_to_common_beam(imagename)
         copy_pb_mask(commonname, pbname)
     # Calculate Hanning smoothed map for use with higher-order moments.
-    if os.path.exists(hannname):
-        log_post('-- Using hanning smoothed image on disk: {0}'.format(hannname))
+    if os.path.exists(hann_name):
+        log_post('-- Using hanning smoothed image on disk: {0}'.format(hann_name))
     else:
         hanning_smooth_image(commonname)
     # Create moment maps.
@@ -2333,7 +2341,7 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     #    2   moment-2, intensity weighted velocity dispersion
     # Factor of 1.305 reduction in RMS from unsmoothed to Hanning smoothed.
     lel_expr_hann_fmt = '{0} && "{1}" > {{sigma}}*{rms}/1.305'.format(
-            lel_expr_clean, hannname, rms=rms,
+            lel_expr_clean, hann_name, rms=rms,
     )
     ia.moments(
             moments=[1],
@@ -2384,6 +2392,9 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     for ext in export_moment_exts:
         momentname = '{0}.{1}'.format(outfile, ext)
         export_fits(momentname, velocity=True, overwrite=overwrite)
+    # Remove hanning-smoothed cube
+    if remove_hanning:
+        safely_remove_file(hann_name)
 
 
 def make_all_moment_maps(field, ext='clean', vwin=5, ignore_chunks=True,
@@ -2529,7 +2540,7 @@ class CubeSet(object):
 
     def get_image_planes(self, ix):
         stem = self.stem
-        im = self.get_plane_from_image(stem+'.image', ix)
+        im = self.get_plane_from_image(stem+'.image.common', ix)
         rs = self.get_plane_from_image(stem+'.residual', ix)
         ma = self.get_plane_from_image(stem+'.mask', ix)
         pb = self.get_plane_from_image(stem+'.pb', ix)
