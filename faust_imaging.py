@@ -10,8 +10,10 @@ may be found under the `docs/` directory or online at:
 
     https://faust-imaging.readthedocs.io
 
-This script is to be run under CASA v5.6 and Python v2.7. To use the script
-interactively, execute the module by running at the CASA IPython prompt:
+This script may be run under CASA v5 (Python 2) or CASA v6 (Python 3).
+The current calibration pipeline release, CASA v5.6, is recommended as
+it has received the most extensive testing. To use the script interactively,
+execute the module by running at the CASA IPython prompt:
 ``execfile('<PATH>/<TO>/faust_imaging.py')``.
 
 Authors

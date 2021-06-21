@@ -1,17 +1,27 @@
 Pipeline installation and setup
 ===============================
-The pipeline comprises a single Python file to be run under CASA v5. The
-pipeline script does not require installation per se, but must be executed when
-starting a new CASA process or session. The instructions below detail how to
-download the script, setup the correct pathes and directories, and execute the
-script.
+The pipeline comprises a single Python file to be run using `CASA <https://casa.nrao.edu/>`_.
+The pipeline script does not require installation per se, but must be executed
+when starting a new CASA process or session. The instructions below detail how
+to download the script, setup the correct pathes and directories, and execute
+the script.
 
 
 CASA compatibility
 -----------------
-The pipeline is to be run using CASA *v5* (e.g., v5.6, v5.7), which will be the
-last version of CASA to use Python 2 and the included CASA Python distribution.
-CASA v6 and Python v3 are not supported at this time, but may be in the future.
+The pipeline script can be used with the "monolithic" versions of CASA v5 (Python 2) or
+CASA v6 (Python 3). These are the versions of CASA downloaded from the main website.
+The pipeline has been primarily tested under CASA v5.6 (the current Calibration
+Pipeline release), but has been tested to at least work under CASA v6.2.
+The "Standard Products" to be distributed to the ALMA Archive are made using CASA v5.6.
+
+The script may also be run using the
+`casatasks <https://open-bitbucket.nrao.edu/projects/CASA/repos/casa6/browse/casatasks>`_
+and `casatools <https://open-bitbucket.nrao.edu/projects/CASA/repos/casa6/browse/casatools>`_
+Python 3 library modules.
+The latter may be installed into the user's Python environment by running
+``pip install --user casatasks casatools``,
+preferably within a project-specific virtual environment.
 
 
 Downloading the pipeline
