@@ -108,11 +108,9 @@ plt.ioff()  # turn off interactive GUI
 CONFIG_FILEN = 'faust_imaging.cfg'
 cfg_parser = ConfigParser()
 if not cfg_parser.read(CONFIG_FILEN):
-    # When running the script in Sphinx to create the documentation, the
-    # config file will be in the above directory (cwd "docs/").
-    cfg_parser.read(os.path.join('..', CONFIG_FILEN))
-DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR')
-PROD_DIR = cfg_parser.get('Paths', 'PROD_DIR')
+    warnings.warn('File "{0}" not found; falling back to CWD.'.format(CONFIG_FILEN))
+DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR', fallback=os.getcwd())
+PROD_DIR = cfg_parser.get('Paths', 'PROD_DIR', fallback=os.getcwd())
 # Directories where specific products are read from or written.
 IMAG_DIR = os.path.join(PROD_DIR, 'images/')
 MOMA_DIR = os.path.join(PROD_DIR, 'moments/')
