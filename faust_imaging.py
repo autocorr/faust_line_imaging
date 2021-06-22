@@ -109,8 +109,12 @@ CONFIG_FILEN = 'faust_imaging.cfg'
 cfg_parser = ConfigParser()
 if not cfg_parser.read(CONFIG_FILEN):
     warnings.warn('File "{0}" not found; falling back to CWD.'.format(CONFIG_FILEN))
-DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR', fallback=os.getcwd())
-PROD_DIR = cfg_parser.get('Paths', 'PROD_DIR', fallback=os.getcwd())
+    # ConfigParser in Py3 does not have "fallback" parameter to "get" method.
+    # So set explicitly.
+    cfg_parser.set('Paths', 'DATA_DIR', os.getcwd())
+    cfg_parser.set('Paths', 'PROD_DIR', os.getcwd())
+DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR')
+PROD_DIR = cfg_parser.get('Paths', 'PROD_DIR')
 # Directories where specific products are read from or written.
 IMAG_DIR = os.path.join(PROD_DIR, 'images/')
 MOMA_DIR = os.path.join(PROD_DIR, 'moments/')
