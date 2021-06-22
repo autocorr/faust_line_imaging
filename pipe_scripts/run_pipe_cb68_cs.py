@@ -17,12 +17,17 @@ In this example:
 """
 
 # FIXME Please change the path below such that is correct for the location of
-# the "faust_imaging.py" script on your system. The pipeline is intended to be
-# run under CASA v5 and Python v2.7; once `execfile` is run, all functions and
-# variables from the pipeline will be in scope.  The "_" prefixing the names
-# below helps ensure we don't accidentally shadow variables set in
-# `faust_imaging.py`.
-execfile('../casa_scripts/faust_imaging.py')
+# the "faust_imaging.py" script on your system.  Once the code is executed, all
+# functions and variables from the pipeline will be in scope.  The "_"
+# prefixing the names below helps ensure we don't accidentally shadow variables
+# set in `faust_imaging.py`.
+_SCRIPT_NAME = '../casa_scripts/faust_imaging.py'
+if sys.version_info >= (3, 0, 0):
+    with open(_SCRIPT_NAME) as f:
+        code = compile(f.read(), _SCRIPT_NAME, 'exec')
+        exec(code)
+else:
+    execfile(_SCRIPT_NAME)
 
 # The number of batches should be defined in the torque shell script and
 # should be either twice the number of chunks or half the number of CPUs.
