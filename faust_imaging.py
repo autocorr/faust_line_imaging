@@ -2087,7 +2087,7 @@ class ChunkedConfigSet(object):
             ia.close()
             ia.done()
 
-    def postprocess(self, ext='clean', use_existing_except=None):
+    def postprocess(self, ext='clean', use_existing_except=None, make_hanning=False):
         """
         Parameters
         ----------
@@ -2097,6 +2097,8 @@ class ChunkedConfigSet(object):
             modified (by manual cleaning for example), then only re-process the
             chunks set by this variable. If left unset (None), then all chunks
             are processed.
+        make_hanning : bool, default False
+            Create the Hanning smoothed cube.
         """
         beam = self.get_common_beam(ext=ext)
         assert beam is not None
@@ -2111,8 +2113,9 @@ class ChunkedConfigSet(object):
             for ix in use_existing_except:
                 self.configs[ix].postprocess(**postproc_kwargs)
         self.concat_cubes(ext=ext)
-        hanning_smooth_image('{0}.image.common'.format(imagebase))
         export_fits('{0}.image.pbcor.common'.format(imagebase))
+        if make_hanning:
+            hanning_smooth_image('{0}.image.common'.format(imagebase))
 
 
 def make_all_line_dirty_cubes(dset, weighting=0.5, fullcube=True):
