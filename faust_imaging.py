@@ -2258,7 +2258,7 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     Parameters
     ----------
     imagename : str
-        CASA image filename ending in '.image'.
+        CASA image filename ending in '.image.common'.
     m1_sigma : number
         Multiple of the RMS to threshold the Moment 1 data on.
     m2_sigma : number
@@ -2271,24 +2271,18 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
         Delete the hanning-smoothed cube after use.
     overwrite : bool
     """
+    image_ext = '.image.common'
+    assert imagename.endswith(image_ext)
     if not os.path.exists(MOMA_DIR):
         os.makedirs(MOMA_DIR)
     # File names
-    stem = os.path.splitext(imagename)[0]
+    stem = imagename[:-len(image_ext)]
+    basename = os.path.basename(stem)
     pbname = '{0}.pb'.format(stem)
     maskname = '{0}.mask'.format(stem)
     commonname = '{0}.image.common'.format(stem)
     hann_name = '{0}.image.common.hanning'.format(stem)
-    basename = os.path.basename(stem)
     outfile = os.path.join(MOMA_DIR, basename)
-    # The `ia.moments` task must smooth to a common resolution before
-    # computing the moments. To avoid doing this multiple times, process
-    # once and store the file.
-    if os.path.exists(commonname):
-        log_post('-- Using commonbeam image on disk: {0}'.format(commonname))
-    else:
-        smooth_cube_to_common_beam(imagename)
-        copy_pb_mask(commonname, pbname)
     # Calculate Hanning smoothed map for use with higher-order moments.
     if os.path.exists(hann_name):
         log_post('-- Using hanning smoothed image on disk: {0}'.format(hann_name))
@@ -2297,7 +2291,7 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
     # Create moment maps.
     log_post(':: Calculating moments for: {0}'.format(basename))
     rms = calc_rms_from_image(imagename)
-    field = imhead(imagename, mode='get', hdkey='object')
+    field = [s for s in ALL_FIELD_NAMES if basename.startswith(s)][0]
     vsys = ALL_TARGETS[field].vsys
     # Use all emission within the velocity window for m0 and extrema.
     # Moment IDs:
@@ -2404,7 +2398,7 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
         safely_remove_file(hann_name)
 
 
-def make_all_moment_maps(field, ext='clean', vwin=5, ignore_chunks=True,
+def make_all_moment_maps(field, ext='clean', vwin=None, ignore_chunks=True,
         overwrite=True):
     """
     Generate all moment maps for images with the matching field ID
@@ -2417,16 +2411,20 @@ def make_all_moment_maps(field, ext='clean', vwin=5, ignore_chunks=True,
         Target field ID name
     ext : str
         Image extension name, such as 'clean', 'nomask', etc.
-    vwin : number
-        Velocity window (half-width) to use for estimating moments over
-        relative to the systemic velocity.
+    vwin : number, None
+        Velocity half-window to use for estimating moments over
+        relative to the source systemic velocity (see value specified in
+        ``ALL_TARGETS``). If set to `None`, then a default half-window of 5km/s
+        is used for all lines, except CCH, where a half-window of 1.25km/s used
+        to accomodate the 2.5km/s spacing of the hyperfine satellite lines. If
+        explicitly set, the half-window is used for all lines.
         **units**: km/s
     ignore_chunks : bool
         If 'True' ignore chunk image files.
     overwrite : bool, default True
         Overwrite moment maps files if they exist.
     """
-    image_paths = glob('images/{0}/{0}_*_{1}.image'.format(field, ext))
+    image_paths = glob('images/{0}/{0}_*_{1}.image.common'.format(field, ext))
     image_paths.sort()
     # Typical image file path if chunked:
     #   images/CB68/CB68_244.936GHz_CS_chunk3_joint_0.5_clean.image
@@ -2434,7 +2432,11 @@ def make_all_moment_maps(field, ext='clean', vwin=5, ignore_chunks=True,
     for path in image_paths:
         if ignore_chunks and pattern.search(path) is not None:
             continue
-        make_moments_from_image(path, vwin=vwin, overwrite=overwrite)
+        if vwin is None:
+            mom_vwin = 1.25 if '262.004GHz_CCH' in path else 5.0
+        else:
+            mom_vwin = vwin
+        make_moments_from_image(path, vwin=mom_vwin, overwrite=overwrite)
 
 
 ###############################################################################
