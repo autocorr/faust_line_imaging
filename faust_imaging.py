@@ -693,6 +693,24 @@ def replace_existing_file_with_new(old_filen, new_filen):
     os.rename(new_filen, old_filen)
 
 
+def remove_end_from_pathname(filen, end='.image'):
+    """
+    Retrieve the file name excluding an ending extension or terminating string.
+
+    Parameters
+    ----------
+    filen : str
+    end : str
+        End to file name to remove. If an extension, include the period, e.g.
+        ".image".
+    """
+    if not filen.endswith(end):
+        raise ValueError('Path does not end in "{0}": {1}'.format(filen, end))
+    assert len(filen) > len(end)
+    stem = filen[:-len(end)]
+    return stem
+
+
 def export_fits(imagename, velocity=False, overwrite=True):
     log_post(':: Exporting fits')
     exportfits(imagename, imagename+'.fits', dropstokes=True,
@@ -2271,12 +2289,10 @@ def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
         Delete the hanning-smoothed cube after use.
     overwrite : bool
     """
-    image_ext = '.image.common'
-    assert imagename.endswith(image_ext)
     if not os.path.exists(MOMA_DIR):
         os.makedirs(MOMA_DIR)
     # File names
-    stem = imagename[:-len(image_ext)]
+    stem = remove_end_from_pathname(imagename, end='.image.common')
     basename = os.path.basename(stem)
     pbname = '{0}.pb'.format(stem)
     maskname = '{0}.mask'.format(stem)
@@ -2721,7 +2737,7 @@ def make_qa_plots_from_image(path, plot_sigma=None, overwrite=True):
     """
     # To avoid overwriting files, check if the image PDF file exists
     # and skip plotting if it exists.
-    stem = os.path.splitext(path)[0]
+    stem = remove_end_from_pathname(imagename, end='.image.common')
     basename = os.path.basename(stem)
     file_stem = '{0}{1}_qa_plot_image'.format(PLOT_DIR, basename)
     file_exists = (
@@ -2763,7 +2779,7 @@ def make_all_qa_plots(field, ext='clean', ignore_chunks=True, overwrite=True):
         potentially large run-time cost of reading cubes into memory to re-make
         existing plots.
     """
-    image_paths = glob('{0}{1}/{1}_*_{2}.image'.format(IMAG_DIR, field, ext))
+    image_paths = glob('{0}{1}/{1}_*_{2}.image.common'.format(IMAG_DIR, field, ext))
     image_paths.sort()
     # Typical image file path if chunked:
     #   images/CB68/CB68_244.936GHz_CS_chunk3_joint_0.5_clean.image
