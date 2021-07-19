@@ -705,7 +705,7 @@ def remove_end_from_pathname(filen, end='.image'):
         ".image".
     """
     if not filen.endswith(end):
-        raise ValueError('Path does not end in "{0}": {1}'.format(filen, end))
+        raise ValueError('Path does not end in "{0}": {1}'.format(end, filen))
     assert len(filen) > len(end)
     stem = filen[:-len(end)]
     return stem
@@ -2498,7 +2498,6 @@ class CubeSet(object):
         ----------
         path : str
             Full image path, including extension.
-
         sigma : number
             Significance threshold used to select planes/channels to
             retrieve.
@@ -2506,7 +2505,7 @@ class CubeSet(object):
         self.path = path
         self.sigma = sigma
         # Setup paths and calculate noise
-        stem = os.path.splitext(path)[0]
+        stem = remove_end_from_pathname(path, end='.image.common')
         self.stem = stem
         self.basename = os.path.basename(stem)
         self.rms = calc_rms_from_image(path)
@@ -2737,8 +2736,8 @@ def make_qa_plots_from_image(path, plot_sigma=None, overwrite=True):
     """
     # To avoid overwriting files, check if the image PDF file exists
     # and skip plotting if it exists.
-    stem = remove_end_from_pathname(imagename, end='.image.common')
-    basename = os.path.basename(stem)
+    imagename = remove_end_from_pathname(path, end='.image.common')
+    basename = os.path.basename(imagename)
     file_stem = '{0}{1}_qa_plot_image'.format(PLOT_DIR, basename)
     file_exists = (
             os.path.exists(file_stem + '.pdf') or
