@@ -203,17 +203,17 @@ class Target(object):
 ALL_TARGETS = { t.name: t for t in [
         Target('BHB07-11',          0.35, 3.6),
         Target('CB68',              0.36, 5.0),
-        Target('Elias29',           0.36, 5.0),
-        Target('GSS30',             0.36, 3.5),
+        Target('Elias29',           0.36, 4.0),
+        Target('GSS30',             0.36, 3.2),
         Target('IRAS_15398-3359',   0.32, 5.3),
-        Target('IRS63',             0.34, 0.0),
+        Target('IRS63',             0.34, 2.75),
         Target('L1527',             0.36, 5.9),
         Target('L1551_IRS5',        0.34, 6.5),
         Target('L483',              0.25, 5.5),
         Target('NGC1333_IRAS4A1A2', 0.21, 7.0),
-        Target('NGC1333_IRAS4C',    0.21, 7.6),
+        Target('NGC1333_IRAS4C',    0.21, 7.7),
         Target('R_CrA_IRS7B',       0.37, 6.2),
-        Target('VLA1623A',          0.36, 4.0),
+        Target('VLA1623A',          0.36, 3.8),
 ]}
 ALL_FIELD_NAMES = list(ALL_TARGETS.keys())
 
