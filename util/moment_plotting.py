@@ -46,19 +46,19 @@ VIR_CMAP = plt.cm.viridis
 VIR_CMAP.set_bad('0.5', 1.0)
 
 VELOS = {
-        'BHB07-11':          3.6,
-        'CB68':              5.0,
-        'Elias29':           5.0,
-        'GSS30':             3.5,
-        'IRAS_15398-3359':   5.3,
-        'IRS63':             0.0,
-        'L1527':             5.9,
-        'L1551_IRS5':        6.5,
-        'L483':              5.5,
-        'NGC1333_IRAS4A1A2': 7.0,
-        'NGC1333_IRAS4C':    7.6,
-        'R_CrA_IRS7B':       6.2,
-        'VLA1623A':          4.0,
+        'BHB07-11',          3.6),
+        'CB68',              5.0),
+        'Elias29',           4.0),
+        'GSS30',             3.2),
+        'IRAS_15398-3359',   5.3),
+        'IRS63',             2.75),
+        'L1527',             5.85),
+        'L1551_IRS5',        6.5),
+        'L483',              5.5),
+        'NGC1333_IRAS4A1A2', 7.0),
+        'NGC1333_IRAS4C',    7.7),
+        'R_CrA_IRS7B',       6.2),
+        'VLA1623A',          3.8),
 }
 TARGETS = list(VELOS.keys())
 
@@ -204,7 +204,7 @@ def plot_four_moments(field, spw_label):
     ylabel = r'$\delta \ (\mathrm{J2000})$'
     # Moment 0, integrated intensity
     gc0 = aplpy.FITSFigure(img0, figure=fig, subplot=[x0, y1, dx, dy])
-    gc0.show_colorscale(vmin=0, vmax=15, cmap=HOT_CMAP)
+    gc0.show_colorscale(vmin=0, pmax=99.75, cmap=HOT_CMAP)
     gc0.tick_labels.hide_x()
     gc0.axis_labels.hide_x()
     gc0.axis_labels.set_ytext(ylabel)
@@ -214,7 +214,7 @@ def plot_four_moments(field, spw_label):
     add_beam(gc0, facecolor='white')
     # Maximum, peak intensity
     gc1 = aplpy.FITSFigure(img1, figure=fig, subplot=[x1, y1, dx, dy])
-    gc1.show_colorscale(vmin=0, vmax=10, cmap=HOT_CMAP, stretch='power',
+    gc1.show_colorscale(vmin=0, pmax=99.75, cmap=HOT_CMAP, stretch='power',
             exponent=1)
     add_label(r'Maximum $(I_\mathrm{pk})$', (labelx, labely))
     add_colorbar(gc1, [x1+dx+0.01, y1, 0.02, dy],

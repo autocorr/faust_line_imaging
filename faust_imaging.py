@@ -207,7 +207,7 @@ ALL_TARGETS = { t.name: t for t in [
         Target('GSS30',             0.36, 3.2),
         Target('IRAS_15398-3359',   0.32, 5.3),
         Target('IRS63',             0.34, 2.75),
-        Target('L1527',             0.36, 5.9),
+        Target('L1527',             0.36, 5.85),
         Target('L1551_IRS5',        0.34, 6.5),
         Target('L483',              0.25, 5.5),
         Target('NGC1333_IRAS4A1A2', 0.21, 7.0),
@@ -568,6 +568,44 @@ ALL_SPW_LABELS = list(ALL_SPWS.keys())
 ###############################################################################
 # General utility functions
 ###############################################################################
+
+class ImageManager(object):
+    def __init__(self, infile, cache=True):
+        """
+        Safely open a CASA image by creating a context manager. The image tool
+        and file will be closed even if an error occurs while manipulating the
+        image tool. Note that multiple images can be opened in a nested
+        sequence.
+
+        Parameters
+        ----------
+        infile : str
+            CASA image file name, including any file suffixes.
+
+        Examples
+        --------
+        The file is closed and the image tool destroyed when the scope of the
+        context manager is exited. The following example shows how two images
+        can be opened simulatenously in nested scopes.
+
+        >>> with ImageManager('foo.image') as tool1:
+        ...     print(tool1.shape())
+        ...     with ImageManager('bar.image') as tool2:
+        ...         print(tool2.shape())
+        ... print(tool1.shape())  # Error! The image tool is closed.
+        """
+        self.infile = infile
+        self.cache = cache
+        self.ia = iatool()
+        self.success = self.ia.open(infile, cache=cache)
+
+    def __enter__(self):
+        return self.ia
+
+    def __exit__(self, err_type, err_value, err_traceback):
+        self.ia.done()
+        self.ia.close()
+
 
 def log_post(msg, priority='INFO'):
     """
@@ -2267,151 +2305,350 @@ def test_rename_oldfiles(field, label=None, kind='joint', weighting=0.5):
 # Moment maps
 ###############################################################################
 
-def make_moments_from_image(imagename, vwin=5, m1_sigma=4, m2_sigma=5,
-        remove_hanning=True, overwrite=True):
-    """
-    Create moment maps for the given image. The cube is masked using the
-    associated clean mask.
-
-    Parameters
-    ----------
-    imagename : str
-        CASA image filename ending in '.image.common'.
-    m1_sigma : number
-        Multiple of the RMS to threshold the Moment 1 data on.
-    m2_sigma : number
-        Multiple of the RMS to threshold the Moment 2 data on.
-    vwin : number
-        Velocity window (half-width) to use for estimating moments over
-        relative to the systemic velocity.
-        **units**: km/s
-    remove_hanning : bool, default True
-        Delete the hanning-smoothed cube after use.
-    overwrite : bool
-    """
-    if not os.path.exists(MOMA_DIR):
-        os.makedirs(MOMA_DIR)
-    # File names
-    stem = remove_end_from_pathname(imagename, end='.image.common')
-    basename = os.path.basename(stem)
-    pbname = '{0}.pb'.format(stem)
-    maskname = '{0}.mask'.format(stem)
-    commonname = '{0}.image.common'.format(stem)
-    hann_name = '{0}.image.common.hanning'.format(stem)
-    outfile = os.path.join(MOMA_DIR, basename)
-    # Calculate Hanning smoothed map for use with higher-order moments.
-    if os.path.exists(hann_name):
-        log_post('-- Using hanning smoothed image on disk: {0}'.format(hann_name))
-    else:
-        hanning_smooth_image(commonname)
-    # Create moment maps.
-    log_post(':: Calculating moments for: {0}'.format(basename))
-    rms = calc_rms_from_image(imagename)
-    field = [s for s in ALL_FIELD_NAMES if basename.startswith(s)][0]
-    vsys = ALL_TARGETS[field].vsys
-    # Use all emission within the velocity window for m0 and extrema.
-    # Moment IDs:
-    #    0   moment-0, integrated intensity
-    #    8   maximum intensity
-    ia.open(commonname)
-    imshape = ia.shape()
-    ra_pix  = imshape[0] - 1
-    dec_pix = imshape[1] - 1
-    region = (
-            'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(ra_pix, dec_pix) +
-            'range=[{0:.3f}km/s,{1:.3f}km/s]'.format(vsys-vwin, vsys+vwin)
-    )
-    ia.moments(
-            moments=[0],
-            includepix=[0, 1e9],
-            region=region,
-            outfile=outfile+'.mom0',
-            overwrite=True,
-    ).done()
-    ia.moments(
-            moments=[8],
-            region=region,
-            outfile=outfile+'.max',
-            overwrite=True,
-    ).done()
-    # Use all emission within clean mask for m0 and extrema.
-    # Create a T/F mask using an LEL expression on the 1/0 clean mask.
-    lel_expr_clean = '"{0}" > 0.5'.format(maskname)
-    ia.moments(
-            moments=[0],
-            mask=lel_expr_clean,
-            region=region,
-            outfile=outfile+'.mom0_cmask',
-            overwrite=True,
-    ).done()
-    ia.moments(
-            moments=[8],
-            mask=lel_expr_clean,
-            region=region,
-            outfile=outfile+'.max_cmask',
-            overwrite=True,
-    ).done()
-    # Apply significance thresholds to m1/m2. Apply hanning smoothing to the
-    # spectral axis to help mitigate single-channel noise-spikes.
-    # Moment IDs:
-    #    1   moment-1, intensity weighted mean velocity
-    #    2   moment-2, intensity weighted velocity dispersion
-    # Factor of 1.305 reduction in RMS from unsmoothed to Hanning smoothed.
-    lel_expr_hann_fmt = '{0} && "{1}" > {{sigma}}*{rms}/1.305'.format(
-            lel_expr_clean, hann_name, rms=rms,
-    )
-    ia.moments(
-            moments=[1],
-            mask=lel_expr_hann_fmt.format(sigma=m1_sigma),
-            region=region,
-            outfile=outfile+'.mom1',
-            overwrite=overwrite,
-    ).done()
-    ia.moments(
-            moments=[2],
-            mask=lel_expr_hann_fmt.format(sigma=m2_sigma),
-            region=region,
-            outfile=outfile+'.mom2',
-            overwrite=overwrite,
-    ).done()
-    ia.done()
-    ia.close()
-    # Retrieve plane of the primary beam near the systemic velocity
-    ia.open(pbname)
-    pbcube = ia.getregion(region, dropdeg=True).transpose()
-    ia.done()
-    ia.close()
-    ix_center = pbcube.shape[0] // 2
-    pbplane = pbcube[ix_center]
-    # Primary beam correct the relevant moment maps
-    for ext in ('mom0', 'mom0_cmask', 'max', 'max_cmask'):
-        momentname = '{0}.{1}'.format(outfile, ext)
-        pbcor_momentname = '{0}.pbcor'.format(momentname)
-        impbcor(
-                imagename=momentname,
-                pbimage=pbplane,
-                outfile=pbcor_momentname,
-                overwrite=overwrite,
+class MomentMapper(object):
+    def __init__(self, imagename, vwin=5, m1_sigma=4, m2_sigma=5, overwrite=True):
+        """
+        Parameters
+        ----------
+        imagename : str
+            CASA image filename ending in '.image.common'.
+        vwin : number
+            Velocity window (half-width) to use for estimating moments over
+            relative to the systemic velocity.
+            **units**: km/s
+        m1_sigma : number
+            Multiple of the RMS to threshold the Moment 1 data on.
+        m2_sigma : number
+            Multiple of the RMS to threshold the Moment 2 data on.
+        overwrite : bool, default True
+            Overwrite moment maps and associated files if they exist.
+        """
+        assert os.path.exists(imagename)
+        if not os.path.exists(MOMA_DIR):
+            os.makedirs(MOMA_DIR)
+        # File names
+        stem = remove_end_from_pathname(imagename, end='.image.common')
+        self.stem = stem
+        self.basename = os.path.basename(stem)
+        self.pbname = '{0}.pb'.format(stem)
+        self.maskname = '{0}.mask'.format(stem)
+        self.commonname = '{0}.image.common'.format(stem)
+        self.hann_name = '{0}.image.common.hanning'.format(stem)
+        self.outfile = os.path.join(MOMA_DIR, self.basename)
+        # Other input parameters
+        self.vwin = vwin
+        self.m1_sigma = m1_sigma
+        self.m2_sigma = m2_sigma
+        self.overwrite = overwrite
+        # Compute RMS from full cube
+        self.rms = calc_rms_from_image(imagename)
+        assert self.rms > 0
+        # Determine system velocity from field in filename
+        fields = [s for s in ALL_FIELD_NAMES if self.basename.startswith(s)]
+        assert len(fields) == 1
+        self.field = fields[0]
+        self.vsys = ALL_TARGETS[self.field].vsys
+        # LEL expressions to create masks for moment calculations
+        self.lel_expr_mom0 = '"{0}" > 0.5'.format(self.maskname)
+        # Factor of 1.305 reduction in RMS from unsmoothed to Hanning smoothed.
+        lel_expr_hann_fmt = '{0} && "{1}" > {{sigma}}*{rms}/1.305'.format(
+                self.lel_expr_mom0, self.hann_name, rms=self.rms,
         )
-        # Division by NaN appears to create a few "hot pixels" with
-        # floating point Inf when dividing by a primary beam plane
-        # that has a mask slightly smaller than the mask generated
-        # `ia.moments`. Manually replace these Inf values back to NaN.
-        ia.open(pbcor_momentname)
-        data = ia.getchunk()
-        data[np.isinf(data)] = np.nan
-        ia.putchunk(data)
-        ia.done()
-        ia.close()
-    # Export the CASA images to FITS files
-    export_moment_exts = ('mom0.pbcor', 'mom0_cmask.pbcor', 'max.pbcor',
-            'max_cmask.pbcor', 'mom1', 'mom2')
-    for ext in export_moment_exts:
-        momentname = '{0}.{1}'.format(outfile, ext)
-        export_fits(momentname, velocity=True, overwrite=overwrite)
-    # Remove hanning-smoothed cube
-    if remove_hanning:
-        safely_remove_file(hann_name)
+        self.lel_expr_mom1 = lel_expr_hann_fmt.format(sigma=m1_sigma)
+        self.lel_expr_mom2 = lel_expr_hann_fmt.format(sigma=m2_sigma)
+        # Image attributes
+        with ImageManager(self.commonname) as tool:
+            self.imshape = tool.shape()
+        self.ra_pix, self.dec_pix = self.get_top_right_corner_pixels()
+        self.region = self.get_region()
+        self.vaxis = self.get_cube_velocity_axis()
+        self.chan_width = abs(self.vaxis[1] - self.vaxis[0])
+
+    def get_cube_velocity_axis(self, as_region_subim=False, with_image_axes=False):
+        """
+        Velocity axis in units of km/s derived from the ".image.common" image file.
+
+        Parameters
+        ----------
+        as_region_subim : bool, default False
+            Compute velocity axis only over sub-image defined by the velocity
+            window region.
+        with_image_axes : bool, default False
+            Reshape to use the same dimensions as the image cube (Stokes, RA,
+            Dec, Chan). `False` returns as 1D.
+        """
+        with ImageManager(self.commonname) as full_tool:
+            if as_region_subim:
+                sub_tool = full_tool.subimage(region=self.region)
+                tool = sub_tool
+            else:
+                tool = full_tool
+            imshape = tool.shape()
+            nchan = imshape[3]
+            vaxis = np.zeros(nchan)
+            for i in range(nchan):
+                wdict = tool.toworld([0, 0, 0, i], 'm')
+                velo = wdict['measure']['spectral']['radiovelocity']['m0']
+                assert qa.isquantity(velo)
+                vaxis[i] = qa.convert(velo, 'km/s')['value']
+        if with_image_axes:
+            return vaxis.reshape(1, 1, 1, -1)
+        else:
+            return vaxis
+
+    def get_top_right_corner_pixels(self):
+        with ImageManager(self.commonname) as tool:
+            imshape = tool.shape()
+            ra_pix  = imshape[0] - 1
+            dec_pix = imshape[1] - 1
+        return ra_pix, dec_pix
+
+    def get_region(self):
+        """
+        Create a full-field sub-cube restricted to a window in velocity
+        about the source systemic velocity.
+        """
+        ra_pix, dec_pix = self.ra_pix, self.dec_pix
+        v_lo = self.vsys - self.vwin
+        v_hi = self.vsys + self.vwin
+        region = (
+                'box[[0pix,0pix],[{0}pix,{1}pix]], '.format(ra_pix, dec_pix) +
+                'range=[{0:.3f}km/s,{1:.3f}km/s]'.format(v_lo, v_hi)
+        )
+        return region
+
+    def get_vlsr_pb_plane(self):
+        """
+        Retrieve the primary beam near the center of the velocity window
+        and thus the source systemic velocity.
+        """
+        # Retrieve plane of the primary beam near the systemic velocity
+        with ImageManager(self.pbname) as tool:
+            pbdata = tool.getregion(self.region, dropdeg=True)
+            pbmask = tool.getregion(self.region, getmask=True, dropdeg=True)
+        ix_center = pbdata.shape[-1] // 2
+        plane = pbdata[...,ix_center]
+        # Masked values will be stored as zeros in the data array and lead to
+        # divide-by-zero errors in some cases. Replace with NaNs from mask data.
+        mask = pbmask[...,ix_center]
+        plane[~mask] = np.nan
+        return plane
+
+    def get_rms_map(self, with_pb_atten=False):
+        data = np.ones((self.imshape[0], self.imshape[1]), dtype=np.float64)
+        data *= self.rms
+        if with_pb_atten:
+            # The PB map contains NaNs and will generate a numpy warning for
+            # invalid value operation (divide by NaN).
+            #np_err_state = np.seterr(invalid='ignore')
+            data /= self.get_vlsr_pb_plane()
+            data[np.isinf(data)] = np.nan
+            #np.seterr(**np_err_state)
+        return data
+
+    def make_max(self):
+        """
+        Make the peak intensity map (maximum). Use all emission within the
+        velocity window.
+        """
+        with ImageManager(self.commonname) as tool:
+            tool.moments(
+                    moments=[8],
+                    region=self.region,
+                    outfile=self.outfile+'.max',
+                    overwrite=self.overwrite,
+            ).done()
+
+    def make_mom0(self):
+        """
+        Make the integrated intensity map (moment 0). Use all emission within
+        the velocity window that is also in the CLEAN mask. Expressions for the
+        moment calculations can be found in the help documentation to the
+        ``ia.moments`` toolkit function.
+
+        .. math::
+           M_0 = \Delta v \Sum I_i
+        """
+        with ImageManager(self.commonname) as tool:
+            tool.moments(
+                    moments=[0],
+                    mask=self.lel_expr_mom0,
+                    region=self.region,
+                    outfile=self.outfile+'.mom0',
+                    overwrite=self.overwrite,
+            ).done()
+
+    def make_mom0_err(self):
+        """
+        Make the error map of the integrated intensity (moment 0).
+
+        .. math::
+           \delta M_0 = \Delta v \sqrt{N} \sigma_\mathrm{rms}
+        """
+        # sum the number of pixels
+        with ImageManager(self.maskname) as tool:
+            maskdata = tool.getregion(region=self.region,
+                    mask=self.lel_expr_mom0, dropdeg=True)
+        # Stokes dropped, so shape should be (RA, Dec, Chan)
+        log_post('-- Calculating error map for: {0}'.format(self.outfile))
+        chansum_map = maskdata.sum(axis=2)
+        rms_map = self.get_rms_map()
+        err_map = np.sqrt(chansum_map) * rms_map * self.chan_width
+        # Create new CASA image and copy the error map data into it.
+        filen_mom0 = self.outfile + '.mom0'
+        filen_err0 = self.outfile + '.mom0_err'
+        if not os.path.exists(filen_mom0):
+            raise RuntimeError('Moment 0 image does not exist: {0}'.format(filen_mom0))
+        try:
+            tool = ia.newimagefromimage(
+                    infile=filen_mom0,
+                    outfile=filen_err0,
+                    overwrite=self.overwrite,
+            )
+            tool.putchunk(err_map)
+        except RuntimeError:
+            raise
+        finally:
+            tool.done()
+            tool.close()
+
+    def make_mom1(self):
+        """
+        Make the intensity weighted mean velocity map (moment 1). Use all
+        emission within the velocity window that is within the CLEAN mask
+        and also above a significance threshold in the Hanning smoothed cube.
+
+        .. math::
+           M_1 = \frac{\sum I_i v_i}{M_0}
+        """
+        with ImageManager(self.commonname) as tool:
+            tool.moments(
+                    moments=[1],
+                    mask=self.lel_expr_mom1,
+                    region=self.region,
+                    outfile=self.outfile+'.mom1',
+                    overwrite=self.overwrite,
+            ).done()
+
+    def make_mom1_err(self):
+        """
+        Make the error map of the intensity weighted mean velocity (moment 1).
+
+        .. math::
+           \delta M_1 = | M_1 | \sqrt{\left( \frac{\sigma_\mathrm{rms} \sum v_i^2}{M_1 M_0} \right)^2 + \left( \frac{\delta M_0}{M_0} \right)^2}
+        """
+        # sum the number of pixels
+        with ImageManager(self.maskname) as tool:
+            maskdata = tool.getregion(region=self.region,
+                    mask=self.lel_expr_mom1, dropdeg=True)
+        # Create new CASA image and copy the error map data into it.
+        filen_mom0 = self.outfile + '.mom0'
+        filen_mom1 = self.outfile + '.mom1'
+        filen_err0 = self.outfile + '.mom0_err'
+        filen_err1 = self.outfile + '.mom1_err'
+        for filen in (filen_mom0, filen_mom1, filen_err0):
+            if not os.path.exists(filen):
+                raise RuntimeError('Image does not exist: {0}'.format(filen))
+        log_post('-- Calculating error map for: {0}'.format(self.outfile))
+        with ImageManager(filen_mom0) as tool:
+            mom0 = tool.getchunk().squeeze()
+        with ImageManager(filen_mom1) as tool:
+            mom1 = tool.getchunk().squeeze()
+        with ImageManager(filen_err0) as tool:
+            err0 = tool.getchunk().squeeze()
+        rms_map = self.get_rms_map()
+        vaxis = self.get_cube_velocity_axis(as_region_subim=True).reshape(1, 1, -1)
+        # Sum values over the velocity axis.
+        # Stokes dropped, so shape should be (RA, Dec, Chan).
+        vterm = np.sqrt(np.sum((vaxis * maskdata)**2, axis=2))
+        err_map = np.abs(mom1) * np.sqrt(
+                ((rms_map * vterm) / (mom1 * mom0))**2 +
+                (err0 / mom0)**2
+        )
+        try:
+            tool = ia.newimagefromimage(
+                    infile=filen_mom1,
+                    outfile=filen_err1,
+                    overwrite=self.overwrite,
+            )
+            tool.putchunk(err_map)
+        except RuntimeError:
+            raise
+        finally:
+            tool.done()
+            tool.close()
+
+    def make_mom2(self):
+        """
+        Make the intensity weighted mean velocity dispersion map (moment 2).
+        Use all emission within the velocity window that is within the CLEAN
+        mask and also above a significance threshold in the Hanning smoothed
+        cube.
+
+        .. math::
+           M_2 = sqrt{\frac{\sum I_i (v_i - M_1)^2}{M_0}}
+        """
+        with ImageManager(self.commonname) as tool:
+            tool.moments(
+                    moments=[2],
+                    mask=self.lel_expr_mom2,
+                    region=self.region,
+                    outfile=self.outfile+'.mom2',
+                    overwrite=self.overwrite,
+            ).done()
+
+    def make_moments(self, remove_hanning=True):
+        """
+        Create moment maps for the given image. The cube is masked using the
+        associated clean mask.
+
+        Parameters
+        ----------
+        remove_hanning : bool, default True
+            Delete the hanning-smoothed cube after use.
+        """
+        # Calculate Hanning smoothed map for use with higher-order moments.
+        if os.path.exists(self.hann_name):
+            log_post('-- Using hanning smoothed image on disk: {0}'.format(self.hann_name))
+        else:
+            hanning_smooth_image(self.commonname)
+        # Create moment maps.
+        log_post(':: Calculating moments for: {0}'.format(self.basename))
+        self.make_max()
+        self.make_mom0()
+        self.make_mom1()
+        self.make_mom2()
+        self.make_mom0_err()
+        # Primary beam correct the relevant moment maps
+        pbplane = self.get_vlsr_pb_plane()
+        for ext in ('mom0', 'max', 'mom0_err'):
+            momentname = '{0}.{1}'.format(self.outfile, ext)
+            pbcor_momentname = '{0}.pbcor'.format(momentname)
+            impbcor(
+                    imagename=momentname,
+                    pbimage=pbplane,
+                    outfile=pbcor_momentname,
+                    overwrite=self.overwrite,
+            )
+            # Division by NaN appears to create a few "hot pixels" with
+            # floating point Inf when dividing by a primary beam plane
+            # that has a mask slightly smaller than the mask generated
+            # `ia.moments`. Manually replace these Inf values back to NaN.
+            with ImageManager(pbcor_momentname) as tool:
+                data = tool.getchunk()
+                data[np.isinf(data)] = np.nan
+                tool.putchunk(data)
+        # Export the CASA images to FITS files
+        export_moment_exts = (
+                'mom0.pbcor', 'max.pbcor', 'mom1', 'mom2',
+                'mom0_err.pbcor',
+        )
+        for ext in export_moment_exts:
+            momentname = '{0}.{1}'.format(self.outfile, ext)
+            export_fits(momentname, velocity=True, overwrite=self.overwrite)
+        # Remove hanning-smoothed cube
+        if remove_hanning:
+            safely_remove_file(self.hann_name)
 
 
 def make_all_moment_maps(field, ext='clean', vwin=None, ignore_chunks=True,
@@ -2440,7 +2677,9 @@ def make_all_moment_maps(field, ext='clean', vwin=None, ignore_chunks=True,
     overwrite : bool, default True
         Overwrite moment maps files if they exist.
     """
-    image_paths = glob('images/{0}/{0}_*_{1}.image.common'.format(field, ext))
+    image_paths = glob(os.path.join(
+        IMAG_DIR, '{0}/{0}_*_{1}.image.common'.format(field, ext)
+    ))
     image_paths.sort()
     # Typical image file path if chunked:
     #   images/CB68/CB68_244.936GHz_CS_chunk3_joint_0.5_clean.image
@@ -2449,10 +2688,11 @@ def make_all_moment_maps(field, ext='clean', vwin=None, ignore_chunks=True,
         if ignore_chunks and pattern.search(path) is not None:
             continue
         if vwin is None:
-            mom_vwin = 1.25 if '262.004GHz_CCH' in path else 5.0
+            mom_vwin = 1.25 if '262.004GHz_CCH' in path else 5.0  # km/s
         else:
             mom_vwin = vwin
-        make_moments_from_image(path, vwin=mom_vwin, overwrite=overwrite)
+        mapper = MomentMapper(path, vwin=mom_vwin, overwrite=overwrite)
+        mapper.make_moments()
 
 
 ###############################################################################
