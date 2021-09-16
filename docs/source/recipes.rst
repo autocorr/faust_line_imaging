@@ -246,7 +246,6 @@ which are resource intensive to process with full bandwidth cubes.
 
 .. code-block:: python
 
-   dset = DataSet('CB68', kind='joint')
    # We wish to image the acetaldehyde CH3CHO 11(1,10)-10(1,9) transition
    # also found in the Setup 1 SPW ID 27. The primary targeted line was
    # deuterated ammonia NH2D 3(2,2)s-3(2,1)a. Create a copy of this window
@@ -255,6 +254,10 @@ which are resource intensive to process with full bandwidth cubes.
    spw = ALL_SPWS['216.563GHz_NH2D'].copy()
    spw.mol_name = 'CH3CHO'
    spw.restfreq = '216.58193040GHz'  # from SLAIM
+   # Initialize the DataSet class, which contains information such as image
+   # and cell size, etc., with the same Setup as our SPW (Setup 1 in this
+   # example).
+   dset = DataSet('CB68', setup=spw.setup, kind='joint')
    # Initialize the `ImageConfig` class directly from the instances and
    # run the pipeline.
    config = ImageConfig(dset, spw, fullcube=False)
