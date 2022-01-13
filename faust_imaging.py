@@ -1617,7 +1617,8 @@ class ImageConfig(object):
             parallel=self.parallel,
         )
         self.mpicasa_cleanup(imagename)
-        delete_all_extensions(imagename, keep_exts=['sumwt'])
+        if not self.preserve_all_intermediate_products:
+            delete_all_extensions(imagename, keep_exts=['sumwt'])
         # Validate that the sumwt file contains useful data. If tclean fails to
         # create the PSF then the sumwt file will contain all zeros.
         sumwt_filen = '{0}.sumwt'.format(imagename)
@@ -2651,6 +2652,17 @@ class MomentMapper(object):
             safely_remove_file(self.hann_name)
 
 
+def make_moments_from_image(path, vwin=None, overwrite=True):
+    assert os.path.exists(path)
+    if vwin is None:
+        mom_vwin = 1.25 if '262.004GHz_CCH' in path else 5.0  # km/s
+    else:
+        mom_vwin = vwin
+    mapper = MomentMapper(path, vwin=mom_vwin, overwrite=overwrite)
+    mapper.make_moments()
+    return mapper
+
+
 def make_all_moment_maps(field, ext='clean', vwin=None, ignore_chunks=True,
         overwrite=True):
     """
@@ -2687,12 +2699,7 @@ def make_all_moment_maps(field, ext='clean', vwin=None, ignore_chunks=True,
     for path in image_paths:
         if ignore_chunks and pattern.search(path) is not None:
             continue
-        if vwin is None:
-            mom_vwin = 1.25 if '262.004GHz_CCH' in path else 5.0  # km/s
-        else:
-            mom_vwin = vwin
-        mapper = MomentMapper(path, vwin=mom_vwin, overwrite=overwrite)
-        mapper.make_moments()
+        make_moments_from_image(path, vwin=vwin, overwrite=overwrite)
 
 
 ###############################################################################

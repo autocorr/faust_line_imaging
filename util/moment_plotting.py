@@ -46,19 +46,19 @@ VIR_CMAP = plt.cm.viridis
 VIR_CMAP.set_bad('0.5', 1.0)
 
 VELOS = {
-        'BHB07-11',          3.6),
-        'CB68',              5.0),
-        'Elias29',           4.0),
-        'GSS30',             3.2),
-        'IRAS_15398-3359',   5.3),
-        'IRS63',             2.75),
-        'L1527',             5.85),
-        'L1551_IRS5',        6.5),
-        'L483',              5.5),
-        'NGC1333_IRAS4A1A2', 7.0),
-        'NGC1333_IRAS4C',    7.7),
-        'R_CrA_IRS7B',       6.2),
-        'VLA1623A',          3.8),
+        'BHB07-11':          3.6,
+        'CB68':              5.0,
+        'Elias29':           4.0,
+        'GSS30':             3.2,
+        'IRAS_15398-3359':   5.3,
+        'IRS63':             2.75,
+        'L1527':             5.85,
+        'L1551_IRS5':        6.5,
+        'L483':              5.5,
+        'NGC1333_IRAS4A1A2': 7.0,
+        'NGC1333_IRAS4C':    7.7,
+        'R_CrA_IRS7B':       6.2,
+        'VLA1623A':          3.8,
 }
 TARGETS = list(VELOS.keys())
 
@@ -173,7 +173,7 @@ def plot_four_moments(field, spw_label):
     # does not work and must currently fall-back to `aplpy==1.1.1` that does
     # not wrap the new WCSAxes module in astropy
     filen = 'moments/{0}_{1}'.format(field, spw_label)
-    img0 = open_fits(filen + '.mom0_cmask.pbcor.fits')
+    img0 = open_fits(filen + '.mom0.pbcor.fits')
     img1 = open_fits(filen + '.max.pbcor.fits')
     img2 = open_fits(filen + '.mom1.fits')
     img3 = open_fits(filen + '.mom2.fits')
