@@ -2831,7 +2831,7 @@ class CubeSet(object):
         stem = self.stem
         threshold = self.sigma * self.rms
         log_post('-- Identifying channels with significant emission')
-        imagename = '{0}.image'.format(stem)
+        imagename = '{0}.image.common'.format(stem)
         try:
             ia.open(imagename)
             masked_image = ia.imagecalc(
