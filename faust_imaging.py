@@ -2386,15 +2386,18 @@ class MomentMapper(object):
             else:
                 tool = full_tool
             imshape = tool.shape()
-            nchan = imshape[3]
+            n_non_spectral_axes = len(imshape) - 1
+            nchan = imshape[-1]
             vaxis = np.zeros(nchan)
             for i in range(nchan):
-                wdict = tool.toworld([0, 0, 0, i], 'm')
+                ix_for_velocity = n_non_spectral_axes * [0] + [i]
+                wdict = tool.toworld(ix_for_velocity, 'm')
                 velo = wdict['measure']['spectral']['radiovelocity']['m0']
                 assert qa.isquantity(velo)
                 vaxis[i] = qa.convert(velo, 'km/s')['value']
         if with_image_axes:
-            return vaxis.reshape(1, 1, 1, -1)
+            new_shape = n_non_spectral_axes * [1] + [-1]
+            return vaxis.reshape(*new_shape)
         else:
             return vaxis
 
