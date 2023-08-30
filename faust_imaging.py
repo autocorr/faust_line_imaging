@@ -111,7 +111,7 @@ if not cfg_parser.read(CONFIG_FILEN):
     warnings.warn('File "{0}" not found; falling back to CWD.'.format(CONFIG_FILEN))
     # ConfigParser in Py3 does not have "fallback" parameter to "get" method.
     # So set explicitly.
-    cfg_parser.add_section("Path")
+    cfg_parser.add_section("Paths")
     cfg_parser.set('Paths', 'DATA_DIR', os.getcwd())
     cfg_parser.set('Paths', 'PROD_DIR', os.getcwd())
 DATA_DIR = cfg_parser.get('Paths', 'DATA_DIR')
