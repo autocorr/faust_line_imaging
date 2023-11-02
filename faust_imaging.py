@@ -2912,7 +2912,9 @@ def make_qa_plot(cset, kind='image', outfilen='qa_plot'):
     else:
         n_full_pages = cset.ngood // max_plots_per_page
         n_mod_plots = cset.ngood % max_plots_per_page
-        plots_per_page = n_full_pages * [max_plots_per_page] + [n_mod_plots]
+        plots_per_page = n_full_pages * [max_plots_per_page]
+        if n_mod_plots > 0:
+            plots_per_page += [n_mod_plots]
     n_pages = len(plots_per_page)
     iter_planes = cset.iter_planes()
     # get pages per plot
