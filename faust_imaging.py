@@ -1848,6 +1848,7 @@ class ImageConfig(object):
                     # "parallel image" first somehow.
                     raise NotImplementedError('mask_method="seed+multithresh" unsupported with parallel=True')
                 # copy summask to be used in-place with default extension
+                delete_all_extensions(imagename)
                 mask_filen = self.nomask_imagebase + '.summask'
                 shutil.copytree(mask_filen, imagename+'.mask')
             else:
