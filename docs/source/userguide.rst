@@ -311,7 +311,7 @@ restarted with the interactive cleaning.
 
    # (Method 3) Restart tclean interactively without auto-multithresh, using
    # a static mask that we can add to.
-   #problematic_config.clean_line(ext='clean', mask_method='fixed',
+   #problematic_config.clean_line(ext='clean', mask_method='existing',
    #            restart=True, interactive=True)
 
    # Postprocess the results to reproduce the final full-cube products

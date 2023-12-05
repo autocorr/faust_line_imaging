@@ -1787,7 +1787,7 @@ class ImageConfig(object):
                 ``"seed+multithresh"`` generate initial mask from free clean
                 and then use auto-multithresh for automatic masking.
 
-                ``"fixed"`` use the existing clean mask but keep it fixed and
+                ``"existing"`` use the existing clean mask but keep it fixed and
                 do not apply auto-multithresh.
 
                 ``"taper"`` use mask generated from a separate tapered run.
@@ -1823,7 +1823,8 @@ class ImageConfig(object):
                 raise RuntimeError('Mask does not exist for mask_method="existing": {0}'.format(default_mask))
             mask_kwargs = {
                     'usemask': 'user',
-                    'mask': default_mask,
+                    # we implicitly pass the mask using the default extension
+                    # in order to avoid an error in CASA v5.6.1 (and perhaps later).
                     }
         elif mask_method == 'taper':
             # user supplied mask from seperate tapering run
@@ -1837,17 +1838,20 @@ class ImageConfig(object):
         if restart:
             safely_remove_file('{0}.image'.format(imagename))
         else:
-            delete_all_extensions(imagename)
-        if not restart and mask_method == 'seed+multithresh':
-            if self.parallel:
-                # FIXME The mask generated is a "serial" image which is not
-                # read correctly, and subsequently ignored, by tclean run in
-                # parallel. It appears the image must be converted to a
-                # "parallel image" first somehow.
-                raise NotImplementedError('mask_method="seed+multithresh" unsupported with parallel=True')
-            # copy summask to be used in-place with default extension
-            mask_filen = self.nomask_imagebase + '.summask'
-            shutil.copytree(mask_filen, imagename+'.mask')
+            if mask_method == 'existing':
+                delete_all_extensions(imagename, keep_exts=['mask'])
+            elif mask_method == 'seed+multithresh':
+                if self.parallel:
+                    # FIXME The mask generated is a "serial" image which is not
+                    # read correctly, and subsequently ignored, by tclean run in
+                    # parallel. It appears the image must be converted to a
+                    # "parallel image" first somehow.
+                    raise NotImplementedError('mask_method="seed+multithresh" unsupported with parallel=True')
+                # copy summask to be used in-place with default extension
+                mask_filen = self.nomask_imagebase + '.summask'
+                shutil.copytree(mask_filen, imagename+'.mask')
+            else:
+                delete_all_extensions(imagename)
         tclean(
             vis=dset.vis,
             imagename=imagename,
