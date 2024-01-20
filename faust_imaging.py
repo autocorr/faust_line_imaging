@@ -1921,8 +1921,9 @@ class ImageConfig(object):
         if make_hanning:
             hanning_smooth_image(imagebase+'.image.common')
         if make_fits:
-            image_to_export = imagebase + '.image.pbcor.common'
-            export_fits(image_to_export)
+            export_fits("{0}.image.pbcor.common".format(imagebase))
+            export_fits("{0}.mask".format(imagebase))
+            export_fits("{0}.pb".format(imagebase))
 
     def run_pipeline_tasks(self, ext='clean', nomask_sigma=4.5,
             seedmask_sigma=5.0, clean_sigma=3.0):
@@ -2176,7 +2177,9 @@ class ChunkedConfigSet(object):
             for ix in use_existing_except:
                 self.configs[ix].postprocess(**postproc_kwargs)
         self.concat_cubes(ext=ext)
-        export_fits('{0}.image.pbcor.common'.format(imagebase))
+        export_fits("{0}.image.pbcor.common".format(imagebase))
+        export_fits("{0}.mask".format(imagebase))
+        export_fits("{0}.pb".format(imagebase))
         if make_hanning:
             hanning_smooth_image('{0}.image.common'.format(imagebase))
 
@@ -2651,11 +2654,11 @@ class MomentMapper(object):
         # Export the CASA images to FITS files
         export_moment_exts = (
                 'mom0.pbcor', 'max.pbcor', 'mom1', 'mom2',
-                'mom0_err.pbcor',
+                'mom0_err.pbcor', 'max', 'mom0', 'mom0_err',
         )
         for ext in export_moment_exts:
             momentname = '{0}.{1}'.format(self.outfile, ext)
-            export_fits(momentname, velocity=True, overwrite=self.overwrite)
+            export_fits(momentname, overwrite=self.overwrite)
         # Remove hanning-smoothed cube
         if remove_hanning:
             safely_remove_file(self.hann_name)
