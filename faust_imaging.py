@@ -752,8 +752,8 @@ def remove_end_from_pathname(filen, end='.image'):
 
 def export_fits(imagename, velocity=False, overwrite=True):
     log_post(':: Exporting fits')
-    exportfits(imagename, imagename+'.fits', dropstokes=True,
-            velocity=velocity, overwrite=overwrite)
+    exportfits(imagename, imagename+'.fits', velocity=velocity,
+            overwrite=overwrite)
 
 
 def concat_parallel_image(imagename):
