@@ -396,35 +396,3 @@ when imaging a single SPW in parallel and a few days for imaging all SPWs
 of a setup.
 
 
-Fixing FITS headers for archive delivery
------------------------------------------
-Before delivering the final image products to the ALMA archive, several FITS
-header keywords must be set: ``DATAMIN``, ``DATAMAX``, ``INSTRUME``, and
-``OBJECT``. The ``util/fix_header.py`` script handles this by updating the
-FITS files in-place. It requires ``numpy`` and ``astropy`` to be installed in
-the current Python environment and should be run outside of CASA.
-
-To fix the headers from the command line, pass the source name followed by
-one or more FITS files:
-
-.. code-block:: bash
-
-   $ python util/fix_header.py L1527 L1527_262.004GHz_CCH_joint_0.5_clean.image.pbcor.fits
-   Processing: L1527_262.004GHz_CCH_joint_0.5_clean.image.pbcor.fits
-
-Multiple files may be processed at once using shell globbing:
-
-.. code-block:: bash
-
-   $ python util/fix_header.py L1527 /path/to/collection/L1527*.fits
-
-Alternatively, the ``fix_header`` function may be imported and called from
-within a Python interpreter:
-
-.. code-block:: python
-
-   from util.fix_header import fix_header
-
-   fix_header('L1527_262.004GHz_CCH_joint_0.5_clean.image.pbcor.fits', 'L1527')
-
-
